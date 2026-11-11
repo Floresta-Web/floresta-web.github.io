@@ -11,8 +11,8 @@ class FlorestaSystem {
       {id:'about',name:'About',icon:'◈',description:'Runtime and browser capabilities'}
     ];
     this.registry.apps=Object.fromEntries(this.apps.map(a=>[a.id,a]));
-    this.audit=new FlorestaAudit(this);this.motion=new FlorestaMotion(this);this.hardware=new FlorestaHardware(this);this.monitor=new FlorestaMonitor(this);
-    this.detect();this.style();this.render();this.events();this.audit.initialize();this.hardware.initialize();this.monitor.start();
+    this.audit=new FlorestaAudit(this);this.runtime=new FlorestaRuntime(this);this.motion=new FlorestaMotion(this);this.hardware=new FlorestaHardware(this);this.monitor=new FlorestaMonitor(this);
+    this.detect();this.style();this.render();this.events();this.runtime.start();this.audit.initialize();this.hardware.initialize();this.monitor.start();
     window.addEventListener('resize',()=>this.onResize());
   }
   detect() {
@@ -33,7 +33,8 @@ class FlorestaSystem {
   style(){
     const el=document.createElement('style');
     el.textContent=`
-      :root{font-family:Inter,system-ui,-apple-system,sans-serif;color-scheme:dark;--bg:#071711;--panel:#12251e;--panel2:#1a3329;--line:#335647;--text:#e9f7ee;--muted:#a5c3b1;--accent:#8de6a7;--shadow:0 24px 80px #0008}
+      @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap');
+      :root{font-family:'Quicksand',system-ui,-apple-system,sans-serif;color-scheme:dark;--bg:#071711;--panel:#12251e;--panel2:#1a3329;--line:#335647;--text:#e9f7ee;--muted:#a5c3b1;--accent:#8de6a7;--shadow:0 24px 80px #0008}
       *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);overflow:hidden}button,input{font:inherit}button{cursor:pointer;color:inherit}button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       #root{height:100dvh;min-height:380px;position:relative;overflow:hidden;background:radial-gradient(ellipse at 70% 10%,#25513b 0,transparent 52%),linear-gradient(145deg,#071711,#0d2920 65%,#061610)}
       .wallpaper{position:absolute;inset:0;pointer-events:none;opacity:.3;background:repeating-radial-gradient(circle at 65% 65%,transparent 0 42px,#83bd9b0a 43px 44px)}
@@ -46,6 +47,7 @@ class FlorestaSystem {
       .desktop-icon:hover,.desktop-icon:focus-visible{background:#ffffff15}.app-symbol{font-size:30px;display:grid;place-items:center;width:58px;height:58px;background:linear-gradient(145deg,#24513a,#163326);border:1px solid #ffffff24;border-radius:18px}
       .taskbar{position:absolute;bottom:0;left:0;right:0;height:65px;display:flex;justify-content:center;align-items:center;gap:10px;background:#06150fd9;border-top:1px solid #ffffff1c;backdrop-filter:blur(22px);z-index:100}
       .dock-btn{height:46px;min-width:46px;border:1px solid #ffffff20;border-radius:15px;background:#ffffff0b;font-size:24px}.dock-btn:hover,.dock-btn.selected{background:#357d52}
+      .station-label{font-size:12px;font-weight:600;letter-spacing:.03em;color:var(--muted);white-space:nowrap}.runtime-info{font-size:11px;color:var(--text);display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;text-align:right}.runtime-info span{white-space:nowrap}.runtime-dot{width:7px;height:7px;border-radius:50%;background:#7ef0aa;display:inline-block}.runtime-info .runtime-muted{color:var(--muted)}@media(max-width:750px){.station-label{font-size:10px;white-space:normal}.runtime-info{font-size:10px}.runtime-info .runtime-extra{display:none}}@media(max-width:430px){.station-label{display:none}}
       .topbar{border:0;background:rgba(7,24,17,.4)}.floresta-menu{border:0;background:rgba(16,41,31,.4);backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px)}
       .window{border:0!important;background:rgba(16,36,29,.6)!important;backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px)}.window-title{background:rgba(255,255,255,.04)!important;border:0!important;backdrop-filter:blur(25px)}.window-body{background:rgba(16,36,29,.6)}.window-title button{border:0!important;background:rgba(255,255,255,.05)!important;color:inherit}.window-title button:hover{background:rgba(255,255,255,.17)!important}.window.popped{position:fixed;inset:55px 24px 24px!important;width:auto!important;height:auto!important;z-index:90!important}
       .window{position:absolute;top:10%;left:18%;width:min(690px,75vw);height:min(500px,75vh);min-width:300px;min-height:230px;border:1px solid #729c8050;border-radius:17px;background:#10241deF;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;backdrop-filter:blur(30px)}
@@ -127,7 +129,9 @@ class FlorestaSystem {
     root.append(this.node('div',{class:'wallpaper'}));
     const top=this.node('header',{class:'topbar'},[
       this.node('button',{class:'brand-button','data-action':'menu','aria-label':'Floresta Web applications','aria-haspopup':'menu','aria-expanded':String(s.menuOpen),html:'🌲 Floresta Web ▾'}),
-      this.node('span',{class:'spacer'})
+      this.node('span',{class:'station-label',text:'Browser/Reactive Based Web Station'}),
+      this.node('span',{class:'spacer'}),
+      this.node('div',{class:'runtime-info',id:'runtime-info',role:'status','aria-live':'off',text:'Runtime starting…'})
     ]);root.append(top);
     if(s.mode==='desktop'){const menu=this.node('div',{class:'floresta-menu',id:'floresta-menu',role:'menu',hidden:s.menuOpen?null:''});if(s.menuOpen)menu.removeAttribute('hidden');menu.append(this.node('div',{class:'menu-caption',text:'Applications'}));menu.append(this.node('button',{'data-action':'new-window',role:'menuitem',text:'＋  New window'}));this.apps.forEach(a=>menu.append(this.node('button',{role:'menuitem','data-open':a.id,text:a.icon+'  '+a.name})));root.append(menu);}
     if(s.mode==='desktop'){
@@ -149,7 +153,7 @@ class FlorestaSystem {
       }
       root.append(this.node('nav',{class:'android-nav'},[this.node('button',{'data-action':'home','aria-label':'Go home'})]));
     }
-    document.body.append(root);this.clock();this.motion.morph(root);this.audit.record("shell.render",{mode:s.mode});
+    document.body.append(root);this.clock();this.runtime.render();this.motion.morph(root);this.audit.record("shell.render",{mode:s.mode});
   }
   clock(){
     const now=new Date();
@@ -234,5 +238,25 @@ class FlorestaMonitor extends FlorestaModule {
  for(const file of ['index.js','index.R']){const u=new URL(file,location.href);u.searchParams.set('_check',Date.now());const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error(file+' HTTP '+r.status);const h=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await r.arrayBuffer())),v=>v.toString(16).padStart(2,'0')).join('');const old=this.hashes.get(file);if(old&&old!==h){this.system.audit.record('monitor.update',{file});location.reload();return;}this.hashes.set(file,h);}
  }catch(e){this.system.audit.record('monitor.error',{message:String(e)});}finally{this.busy=false;}}
  start(){this.register('start');this.check();setInterval(()=>this.check(),5000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)this.check();});}
+}
+
+class FlorestaRuntime extends FlorestaModule {
+ constructor(system){super('Runtime',system);this.started=performance.now();this.state={phase:'starting'};this.timer=null;}
+ start(){this.register('start');this.collect();this.timer=setInterval(()=>this.collect(),5000);window.addEventListener('online',()=>this.collect());window.addEventListener('offline',()=>this.collect());document.addEventListener('visibilitychange',()=>this.collect());window.addEventListener('resize',()=>this.collect());}
+ collect(){this.register('collect');const state=this.system.registry.state;
+  const language=navigator.language||'unknown',locale=language.split('-')[0];
+  const zone=Intl.DateTimeFormat().resolvedOptions().timeZone||'local';
+  const screenSize=window.innerWidth+'×'+window.innerHeight;
+  const connection=navigator.onLine?'Online':'Offline';
+  this.state={phase:'local',browser:state.browser,os:state.platform,mode:state.mode,screen:screenSize,language:locale,zone,connection,uptime:Math.floor((performance.now()-this.started)/1000),touch:state.touch,cores:navigator.hardwareConcurrency||null,memory:navigator.deviceMemory||null};
+  this.render();
+ }
+ render(){this.register('render');const el=document.querySelector('#runtime-info');if(!el)return;const s=this.state;
+  if(s.phase!=='local'){el.textContent='Runtime starting…';return;}
+  el.replaceChildren();
+  const parts=[['● Local runtime',''],[s.browser+' / '+s.os,''],[s.mode+' · '+s.screen,'runtime-extra'],[s.connection,''],[s.language+' · '+s.zone,'runtime-extra'],['↑ '+Math.floor(s.uptime/60)+'m '+s.uptime%60+'s','runtime-extra']];
+  for(const [value,cls] of parts){const span=document.createElement('span');span.className=cls;span.textContent=value;el.append(span);}
+  el.title='Local browser runtime • '+s.browser+' • '+s.os+' • '+s.mode+' • '+s.screen+' • '+s.connection+' • Language: '+s.language+' • Time zone: '+s.zone+' • Touch: '+s.touch+' • CPU threads: '+(s.cores??'unknown')+' • Memory: '+(s.memory??'unknown')+' GiB (approx.)';
+ }
 }
 new FlorestaSystem();
