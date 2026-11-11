@@ -11,7 +11,8 @@ class FlorestaSystem {
       {id:'about',name:'About',icon:'◈',description:'Runtime and browser capabilities'}
     ];
     this.registry.apps=Object.fromEntries(this.apps.map(a=>[a.id,a]));
-    this.detect();this.style();this.render();this.events();
+    this.audit=new FlorestaAudit(this);this.motion=new FlorestaMotion(this);this.hardware=new FlorestaHardware(this);this.monitor=new FlorestaMonitor(this);
+    this.detect();this.style();this.render();this.events();this.audit.initialize();this.hardware.initialize();this.monitor.start();
     window.addEventListener('resize',()=>this.onResize());
   }
   detect() {
@@ -79,7 +80,7 @@ class FlorestaSystem {
     if(id==='settings')return '<h1>Settings</h1><p>Appearance and display profile</p><button class="action" data-action="theme">Toggle light / dark theme</button><div class="tiles"><div class="tile"><b>Automatic display</b><span>'+s.mode+'</span></div><div class="tile"><b>Touch support</b><span>'+(s.touch?'Available':'Not detected')+'</span></div></div>';
     return '<h1>About Floresta Web</h1><p>JavaScript-generated user interface on GitHub Pages.</p><div class="tiles"><div class="tile"><b>Browser</b><span>'+s.browser+'</span></div><div class="tile"><b>Platform</b><span>'+s.platform+'</span></div><div class="tile"><b>WebAssembly</b><span>'+(typeof WebAssembly!=='undefined'?'Supported':'Unavailable')+'</span></div><div class="tile"><b>WebGPU</b><span>'+(navigator.gpu?'Available':'Unavailable')+'</span></div></div>';
   }
-  open(id){
+  open(id){this.audit.record("shell.open",{id});
     if(!this.registry.apps[id])return;
     const s=this.registry.state;
     if(s.mode!=='desktop'){s.active=id;this.render();return;}
@@ -90,7 +91,7 @@ class FlorestaSystem {
     }
   }
   focus(id){this.registry.state.active=id;this.render();}
-  close(id){const s=this.registry.state;s.windows=s.windows.filter(w=>w.id!==id);s.active=s.windows.at(-1)?.id||0;this.render();}
+  close(id){this.audit.record("shell.close",{id});const s=this.registry.state;s.windows=s.windows.filter(w=>w.id!==id);s.active=s.windows.at(-1)?.id||0;this.render();}
   windowNode(w){
     const a=this.registry.apps[w.app],active=this.registry.state.active===w.id;
     const win=this.node('section',{class:'window'+(w.max?' maximized':'')+(w.min?' minimized':''),style:{left:w.x+'px',top:w.y+'px',zIndex:active?'50':String(10+w.id)}});
@@ -140,7 +141,7 @@ class FlorestaSystem {
       }
       root.append(this.node('nav',{class:'android-nav'},[this.node('button',{'data-action':'home','aria-label':'Go home'})]));
     }
-    document.body.append(root);this.clock();
+    document.body.append(root);this.clock();this.motion.morph(root);this.audit.record("shell.render",{mode:s.mode});
   }
   clock(){
     const now=new Date();
@@ -173,5 +174,50 @@ class FlorestaSystem {
     window.setInterval(()=>this.clock(),15000);
     document.addEventListener('keydown',e=>{if(e.key==='Escape'&&this.registry.state.mode!=='desktop'){this.registry.state.active=0;this.render();}});
   }
+}
+
+class FlorestaModule {
+ constructor(name,system){this.name=name;this.system=system;this.registry=Object.create(null);this.register('constructor');}
+ register(fn,data={}){const x=this.registry[fn]??={calls:0,history:[],children:Object.create(null)};x.calls++;x.history.push({time:Date.now(),data});if(x.history.length>64)x.history.shift();}
+}
+class FlorestaMotion extends FlorestaModule {
+ constructor(system){super('Motion',system);this.reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;}
+ morph(root){this.register('morph');if(this.reduced)return;
+  root.animate([{opacity:.7,filter:'blur(3px)'},{opacity:1,filter:'blur(0)'}],{duration:320,easing:'ease-out'});
+  root.querySelectorAll('.window,.sheet,.app-launch,.desktop-icon').forEach((el,i)=>el.animate([{opacity:0,transform:'translateY(14px) scale(.96)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:320+Math.min(i,10)*35,easing:'cubic-bezier(.2,.8,.2,1)'}));
+ }
+}
+class FlorestaAudit extends FlorestaModule {
+ constructor(system){super('Audit',system);this.events=[];this.ready=false;this.stats=null;}
+ record(action,data={}){this.register('record',{action});this.events.push({action,timestamp:Date.now(),data});if(this.events.length>500)this.events.shift();}
+ async initialize(){this.register('initialize');try{
+  const {WebR}=await import('https://webr.r-wasm.org/latest/webr.mjs');this.webR=new WebR();await this.webR.init();
+  const response=await fetch('./index.R',{cache:'no-store'});if(!response.ok)throw Error('index.R '+response.status);
+  await this.webR.evalR(await response.text());this.ready=true;await this.analyse();setInterval(()=>this.analyse(),15000);
+ }catch(e){this.record('webr.error',{message:String(e)});}}
+ async analyse(){this.register('analyse');if(!this.ready)return;try{
+  const payload=JSON.stringify(JSON.stringify(this.events.map(({action,timestamp})=>({action,timestamp}))));
+  const result=await this.webR.evalR('local({if(!requireNamespace("jsonlite",quietly=TRUE))stop("jsonlite missing");floresta_audit(jsonlite::fromJSON('+payload+',simplifyVector=FALSE))})');
+  this.stats=await result.toJs();
+ }catch(e){this.record('audit.error',{message:String(e)});}}
+}
+class FlorestaHardware extends FlorestaModule {
+ constructor(system){super('Hardware',system);this.state={};}
+ async initialize(){this.register('initialize');this.state={wasm:!!window.WebAssembly,webgpu:!!navigator.gpu,svg:!!document.createElementNS,audio:!!window.AudioContext,bluetooth:!!navigator.bluetooth,usb:!!navigator.usb};
+ try{const b=new Uint8Array([0,97,115,109,1,0,0,0,1,7,1,96,2,127,127,1,127,3,2,1,0,7,7,1,3,97,100,100,0,0,10,9,1,7,0,32,0,32,1,106,11]);const {instance}=await WebAssembly.instantiate(b);this.state.wasmResult=instance.exports.add(20,26);}catch(e){this.state.wasmError=String(e);}
+ if(navigator.gpu)try{const a=await navigator.gpu.requestAdapter();this.gpu=a&&await a.requestDevice();}catch(e){this.state.gpuError=String(e);}
+ this.system.audit.record('hardware.initialized',this.state);
+ }
+ async sound(){this.register('sound');const C=window.AudioContext||window.webkitAudioContext;if(!C)return;const c=new C();await c.resume();const o=c.createOscillator(),g=c.createGain();g.gain.value=.05;o.connect(g).connect(c.destination);o.start();o.stop(c.currentTime+.3);o.onended=()=>c.close();}
+ async bluetooth(){this.register('bluetooth');return navigator.bluetooth?.requestDevice({acceptAllDevices:true});}
+ async usb(){this.register('usb');return navigator.usb?.requestDevice({filters:[]});}
+ vector(){this.register('vector');return document.createElementNS('http://www.w3.org/2000/svg','svg');}
+}
+class FlorestaMonitor extends FlorestaModule {
+ constructor(system){super('Monitor',system);this.hashes=new Map();this.busy=false;}
+ async check(){this.register('check');if(this.busy||document.hidden)return;this.busy=true;try{
+ for(const file of ['index.js','index.R']){const u=new URL(file,location.href);u.searchParams.set('_check',Date.now());const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error(file+' HTTP '+r.status);const h=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await r.arrayBuffer())),v=>v.toString(16).padStart(2,'0')).join('');const old=this.hashes.get(file);if(old&&old!==h){location.reload();return;}this.hashes.set(file,h);}
+ }catch(e){this.system.audit.record('monitor.error',{message:String(e)});}finally{this.busy=false;}}
+ start(){this.register('start');this.check();setInterval(()=>this.check(),5000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)this.check();});}
 }
 new FlorestaSystem();
