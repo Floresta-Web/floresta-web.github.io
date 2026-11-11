@@ -78,7 +78,8 @@ class FlorestaSystem {
       .sheet-header{display:flex;align-items:center;gap:12px;margin-bottom:24px}.sheet-header b{flex:1}.sheet-header button{background:#ffffff16;border:0;border-radius:12px;padding:10px 15px}
       .tablet .mobile-home{padding-top:45px}.tablet .app-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:25px}.tablet .sheet{inset:65px 8% 108px;border-radius:25px}
       .mobile .topbar,.tablet .topbar{height:42px;background:transparent;border:0}
-      .mobile .topbar .brand-button,.tablet .topbar .brand-button{display:none!important}.mobile .hint,.tablet .hint{display:none}
+      .mobile .topbar .brand-button,.tablet .topbar .brand-button{display:none!important}
+      .mobile .topbar,.tablet .topbar{display:none!important}.mobile-dock,.tablet .mobile-dock,.mobile .mobile-dock{border:0!important;outline:0!important;box-shadow:none!important}.mobile-dock button{border:0!important;outline-offset:2px}.mobile .android-nav,.tablet .android-nav{display:none!important}.mobile .hint,.tablet .hint{display:none}
       .light{--bg:#d7eadd;--panel:#e9f5eb;--text:#173426;--muted:#466654;--accent:#167a42;color-scheme:light}
       .light #root{background:linear-gradient(140deg,#b5d7bd,#d7eadd)}.light .topbar{color:#173426}.light .window,.light .sheet{background:#f1faf3;color:#173426}.light .tile{background:#d6ebdc;border-color:#b6d2bf}.light .window-body p,.light .sheet p{color:#466654}
       @media(max-width:680px){.app-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.app-launch .app-symbol{width:57px;height:57px}.tiles{grid-template-columns:1fr 1fr}.sheet{padding:18px}}
@@ -177,7 +178,7 @@ class FlorestaSystem {
       this.node('span',{class:'station-label',text:'Browser/Reactive Based Web Station'}),
       this.node('span',{class:'spacer'}),
       this.node('div',{class:'runtime-info',id:'runtime-info',role:'status','aria-live':'off',text:'Runtime starting…'})
-    ]);root.append(top);
+    ]);if(s.mode==='desktop')root.append(top);
     if(s.mode==='desktop'){const menu=this.node('div',{class:'floresta-menu',id:'floresta-menu',role:'menu',hidden:s.menuOpen?null:''});if(s.menuOpen)menu.removeAttribute('hidden');menu.append(this.node('div',{class:'menu-caption',text:'Applications'}));menu.append(this.node('button',{'data-action':'new-window',role:'menuitem',text:'＋  New window'}));this.apps.forEach(a=>menu.append(this.node('button',{role:'menuitem','data-open':a.id,text:a.icon+'  '+a.name})));root.append(menu);}
     if(s.mode==='desktop'){
       const space=this.node('div',{class:'workspace'});
