@@ -208,6 +208,8 @@ class FlorestaSystem {
     window.addEventListener('message',event=>{if(event.origin===location.origin&&event.data?.type==='floresta-popin')this.restorePopout(event.data.id,false);});
     document.addEventListener('click',e=>{
       const target=e.target.closest('[data-open],[data-action]');if(!target)return;
+      if(target.dataset.action==='market-connect-key'){this.market.connectUserKey();return;}
+      if(target.dataset.action==='market-disconnect-key'){this.market.disconnectUserKey();return;}
       if(target.dataset.action==='market-save-gateway'){try{this.market.saveGateway();}catch(e){alert(e.message);}return;}
       if(target.dataset.action==='market-refresh'){this.market.refresh();return;}
       if(target.dataset.open){this.registry.state.menuOpen=false;this.open(target.dataset.open);return;}
@@ -345,7 +347,7 @@ class FlorestaEAN extends FlorestaModule {
 }
 class FlorestaMarketTree {
   constructor(shell){this.shell=shell;this.registry={functions:{},feeds:{},state:{updated:null,loading:false,fx:null,error:null,quotes:{},symbols:['EUR/USD','GBP/USD','USD/JPY','USD/CHF','AUD/USD','USD/CAD'],stream:null,streamError:null}};this.currencies=['EUR','GBP','JPY','CHF','INR','CAD','AUD'];}
-  start(){this.refresh();this.connectGateway();window.setInterval(()=>this.refresh(),300000);}
+  start(){this.refresh();window.setInterval(()=>this.refresh(),300000);}
   async refresh(){
     const st=this.registry.state;if(st.loading)return;st.loading=true;this.paint();
     try{
@@ -362,7 +364,7 @@ class FlorestaMarketTree {
     const st=this.registry.state,fx=st.fx;
     const rows=fx?this.currencies.map(code=>'<div class="market-leaf"><span>USD / '+code+'</span><strong>'+Number(fx.rates[code]).toLocaleString(undefined,{maximumFractionDigits:5})+'</strong></div>').join(''):'<p>Waiting for exchange-rate feed.</p>';
     const published=fx?.time_last_update_utc||'Not available';
-    return '<div class="market-split"><section class="market-provider"><h2>TradingView · Forex Heatmap</h2><p class="market-note">Embedded TradingView market widget · source controls its own refresh and data delays.</p><div data-tradingview></div></section><section class="market-provider"><h2>Twelve Data · Live Prices</h2><p class="market-note" data-twelve-status>Not connected — configure a secure market gateway</p><div data-twelve-quotes></div><p class="market-note">Server-side API key required. Stream timestamps are supplied by Twelve Data. Prices are not simulated.</p><label class="market-note" for="market-gateway">Secure SSE gateway URL</label><input id="market-gateway" data-market-gateway-input placeholder="https://your-host.example/market/stream" value="'+this.escape(localStorage.getItem('floresta-market-gateway')||'')+'" style="width:100%;padding:10px;border-radius:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line)"><button class="action" data-action="market-save-gateway">Connect gateway</button></section></div><div class="market-head"><div><span class="pill">MARKET STATISTICS TREE</span><h1>Global Markets</h1><p>Stocks · Foreign exchange · Sovereign bonds</p></div><button class="action" data-action="market-refresh">↻ Refresh</button></div>'+
+    return '<div class="market-split"><section class="market-provider"><h2>TradingView · Forex Heatmap</h2><p class="market-note">Embedded TradingView market widget · source controls its own refresh and data delays.</p><div data-tradingview></div></section><section class="market-provider"><h2>Twelve Data · Live Prices</h2><p class="market-note" data-twelve-status>Enter your own Twelve Data API key to connect</p><div data-twelve-quotes></div><p class="market-note">Your personal API key is used directly in this browser session and is not stored or sent to Floresta servers. Provider entitlement limits apply.</p><label class="market-note" for="twelve-key">Personal Twelve Data API key</label><input id="twelve-key" type="password" data-twelve-key autocomplete="off" spellcheck="false" placeholder="Paste your personal API key" style="width:100%;padding:10px;border-radius:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line)"><button class="action" data-action="market-connect-key">Connect my account</button> <button class="action" data-action="market-disconnect-key">Disconnect</button><details><summary>Advanced: trusted SSE gateway</summary><p class="market-note">Only use a gateway you control. Do not paste your key into a gateway URL.</p><label class="market-note" for="market-gateway">Secure SSE gateway URL</label><input id="market-gateway" data-market-gateway-input placeholder="https://your-host.example/market/stream" value="'+this.escape(localStorage.getItem('floresta-market-gateway')||'')+'" style="width:100%;padding:10px;border-radius:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line)"><button class="action" data-action="market-save-gateway">Connect gateway</button></details></section></div><div class="market-head"><div><span class="pill">MARKET STATISTICS TREE</span><h1>Global Markets</h1><p>Stocks · Foreign exchange · Sovereign bonds</p></div><button class="action" data-action="market-refresh">↻ Refresh</button></div>'+
       '<div class="market-tree">'+
       '<details open><summary>🌍 Global Markets <small>3 branches</small></summary><div class="market-branches">'+
       '<details open><summary>💱 Currencies / FX <small>USD base · published reference rates</small></summary><div class="market-leaves">'+rows+'</div><p class="market-note">Provider: ExchangeRate-API open endpoint. Last published: '+this.escape(published)+'. These are periodically updated reference rates, not tick-by-tick FX prices.</p></details>'+
@@ -375,7 +377,7 @@ class FlorestaMarketTree {
     document.querySelectorAll('.window-body,.sheet article').forEach(el=>{
       const win=el.closest('.window');
       const id=win?this.shell.registry.state.windows.find(w=>String(w.id)===win.dataset.windowId)?.app:this.shell.registry.state.active;
-      if(id==='markets'){el.innerHTML=this.content();this.mount(el);}
+      if(id==='markets'){el.innerHTML=this.content();this.mount(el);this.paintQuotes();}
     });
   }
   mount(root){
@@ -415,7 +417,7 @@ class FlorestaMarketTree {
   paintQuotes(){
     document.querySelectorAll('[data-twelve-status]').forEach(el=>{
       const st=this.registry.state;
-      el.textContent=st.streamError||(!st.stream?'Not connected — configure a secure market gateway':'Connected to configured market gateway; awaiting authorized price ticks');
+      el.textContent=st.streamError||(!st.stream?'Enter your own Twelve Data API key to connect':st.userSocket?'Personal WebSocket '+(st.userSocket.readyState===1?'connected':'connecting'):'Gateway connected');
     });
     document.querySelectorAll('[data-twelve-quotes]').forEach(el=>{
       const quotes=this.registry.state.quotes;
@@ -429,12 +431,51 @@ class FlorestaMarketTree {
       }
     });
   }
+  connectUserKey(){
+    const input=document.querySelector('[data-twelve-key]'),key=input?.value.trim();
+    if(!key)return;
+    this.disconnectUserKey(false);
+    this.registry.state.streamError='Connecting to Twelve Data…';
+    this.registry.state.quotes={};
+    const ws=new WebSocket('wss://ws.twelvedata.com/v1/quotes/price?apikey='+encodeURIComponent(key));
+    if(input)input.value='';
+    const st=this.registry.state;st.userSocket=ws;
+    ws.addEventListener('open',()=>{
+      if(st.userSocket!==ws)return;
+      st.streamError=null;
+      ws.send(JSON.stringify({action:'subscribe',params:{symbols:st.symbols.join(',')}}));
+      st.heartbeat=setInterval(()=>{if(ws.readyState===1)ws.send(JSON.stringify({action:'heartbeat'}));},10000);
+      this.paintQuotes();
+    });
+    ws.addEventListener('message',event=>{
+      if(st.userSocket!==ws)return;
+      try{
+        const item=JSON.parse(event.data);
+        if(item.event==='price'&&st.symbols.includes(item.symbol)&&Number.isFinite(Number(item.price))){
+          st.quotes[item.symbol]={price:Number(item.price),timestamp:Number(item.timestamp)||Date.now()/1000};
+          this.paintQuotes();
+        }else if(item.event==='subscribe-status'&&item.status==='error'){
+          st.streamError='Subscription unavailable for this key or plan';this.paintQuotes();
+        }else if(item.event==='error'||item.status==='error'){
+          st.streamError='Twelve Data reported an API or entitlement error';this.paintQuotes();
+        }
+      }catch(_){}
+    });
+    ws.addEventListener('error',()=>{if(st.userSocket===ws){st.streamError='Connection failed; verify key and streaming access';this.paintQuotes();}});
+    ws.addEventListener('close',()=>{if(st.userSocket===ws){clearInterval(st.heartbeat);st.heartbeat=null;st.userSocket=null;st.streamError='Connection closed; reconnect with your key';this.paintQuotes();}});
+    this.paintQuotes();
+  }
+  disconnectUserKey(paint=true){
+    const st=this.registry.state;clearInterval(st.heartbeat);st.heartbeat=null;
+    const ws=st.userSocket;st.userSocket=null;if(ws)ws.close();
+    st.quotes={};st.streamError=null;if(paint)this.paintQuotes();
+  }
   saveGateway(){
     const field=document.querySelector('[data-market-gateway-input]');
     if(!field)return;
     const value=field.value.trim();
     if(value){const url=new URL(value);if(url.protocol!=='https:'&&url.hostname!=='localhost')throw Error('Use HTTPS');}
-    this.registry.state.stream?.close();this.registry.state.stream=null;
+    this.disconnectUserKey(false);this.registry.state.stream?.close();this.registry.state.stream=null;
     if(value)localStorage.setItem('floresta-market-gateway',value);
     else localStorage.removeItem('floresta-market-gateway');
     this.connectGateway();this.paint();
