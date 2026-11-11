@@ -2,7 +2,7 @@
 'use strict';
 class FlorestaSystem {
   constructor() {
-    this.registry={state:{mode:'',windows:[],active:0,next:1,theme:'dark'},functions:{},apps:{}};
+    this.registry={state:{mode:'',windows:[],active:0,next:1,theme:'dark',menuOpen:false},functions:{},apps:{}};
     this.apps=[
       {id:'welcome',name:'Welcome',icon:'🌲',description:'Floresta Web operating environment'},
       {id:'files',name:'Files',icon:'📁',description:'Local workspace overview'},
@@ -39,7 +39,9 @@ class FlorestaSystem {
       .wallpaper{position:absolute;inset:0;pointer-events:none;opacity:.3;background:repeating-radial-gradient(circle at 65% 65%,transparent 0 42px,#83bd9b0a 43px 44px)}
       .topbar{height:46px;display:flex;align-items:center;gap:14px;padding:0 17px;background:#071811c9;border-bottom:1px solid #ffffff18;backdrop-filter:blur(20px);position:relative;z-index:100}
       .brand{font-weight:750;letter-spacing:.2px}.brand em{font-style:normal;color:var(--accent)}.topbar .spacer{flex:1}.hint{font-size:12px;color:var(--muted)}
-      .clock{font-size:13px;font-variant-numeric:tabular-nums}.workspace{position:absolute;inset:46px 0 65px}.desktop-icons{position:absolute;top:24px;left:22px;display:grid;gap:13px}
+      .brand-button{border:0;background:transparent;color:inherit;font-weight:750;letter-spacing:.2px;padding:9px 12px;border-radius:10px;display:flex;align-items:center;gap:8px}.brand-button:hover,.brand-button[aria-expanded=true]{background:#ffffff16}
+      .floresta-menu{position:absolute;top:48px;left:14px;width:min(320px,calc(100vw - 28px));padding:9px;border:1px solid var(--line);border-radius:16px;background:#10291f;box-shadow:var(--shadow);z-index:200;transform-origin:top left}.floresta-menu[hidden]{display:none}.floresta-menu button{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;text-align:left;background:transparent;border:0;border-radius:10px;color:var(--text)}.floresta-menu button:hover,.floresta-menu button:focus-visible{background:#ffffff18}.floresta-menu .menu-caption{padding:9px 14px;color:var(--muted);font-size:12px}
+      .clock{font-size:13px;font-variant-numeric:tabular-nums}.workspace{position:absolute;inset:46px 0 0}.desktop-icons{position:absolute;top:24px;left:22px;display:grid;gap:13px}
       .desktop-icon{width:100px;display:grid;justify-items:center;gap:7px;padding:12px 5px;border:0;border-radius:15px;background:transparent;font-size:12px}
       .desktop-icon:hover,.desktop-icon:focus-visible{background:#ffffff15}.app-symbol{font-size:30px;display:grid;place-items:center;width:58px;height:58px;background:linear-gradient(145deg,#24513a,#163326);border:1px solid #ffffff24;border-radius:18px}
       .taskbar{position:absolute;bottom:0;left:0;right:0;height:65px;display:flex;justify-content:center;align-items:center;gap:10px;background:#06150fd9;border-top:1px solid #ffffff1c;backdrop-filter:blur(22px);z-index:100}
@@ -107,24 +109,20 @@ class FlorestaSystem {
   }
   render(){
     const s=this.registry.state;
-    document.title='Floresta Web · '+s.mode[0].toUpperCase()+s.mode.slice(1);
+    document.title='Floresta Web';
     document.body.className=(s.theme==='light'?'light ':'')+s.mode;
     document.body.replaceChildren();
     const root=this.node('main',{id:'root',class:s.mode});
     root.append(this.node('div',{class:'wallpaper'}));
     const top=this.node('header',{class:'topbar'},[
-      this.node('span',{class:'brand',html:'🌲 Floresta <em>Web</em>'}),
+      this.node('button',{class:'brand-button','data-action':'menu','aria-label':'Floresta Web applications','aria-haspopup':'menu','aria-expanded':String(s.menuOpen),html:'🌲 Floresta Web ▾'}),
       this.node('span',{class:'hint',text:s.mode==='desktop'?'Desktop window system':'Android-inspired '+s.mode+' system'}),
       this.node('span',{class:'spacer'}),this.node('span',{class:'clock',id:'clock'})
     ]);root.append(top);
+    if(s.mode==='desktop'){const menu=this.node('div',{class:'floresta-menu',id:'floresta-menu',role:'menu',hidden:s.menuOpen?null:''});if(s.menuOpen)menu.removeAttribute('hidden');menu.append(this.node('div',{class:'menu-caption',text:'Applications'}));this.apps.forEach(a=>menu.append(this.node('button',{role:'menuitem','data-open':a.id,text:a.icon+'  '+a.name})));root.append(menu);}
     if(s.mode==='desktop'){
       const space=this.node('div',{class:'workspace'});
-      const icons=this.node('div',{class:'desktop-icons'});
-      this.apps.forEach(a=>icons.append(this.node('button',{class:'desktop-icon','data-open':a.id},[this.node('span',{class:'app-symbol',text:a.icon}),this.node('span',{text:a.name})])));
-      space.append(icons);s.windows.forEach(w=>space.append(this.windowNode(w)));root.append(space);
-      const dock=this.node('nav',{class:'taskbar','aria-label':'Desktop taskbar'});
-      this.apps.forEach(a=>dock.append(this.node('button',{class:'dock-btn'+(s.windows.some(w=>w.app===a.id&&!w.min)?' selected':''),'data-open':a.id,title:a.name,text:a.icon})));
-      root.append(dock);
+      s.windows.forEach(w=>space.append(this.windowNode(w)));root.append(space);
     }else{
       const home=this.node('div',{class:'mobile-home'});
       home.append(this.node('div',{class:'mobile-clock',id:'bigclock'}),this.node('div',{class:'mobile-date',id:'date'}));
@@ -152,9 +150,10 @@ class FlorestaSystem {
   events(){
     document.addEventListener('click',e=>{
       const target=e.target.closest('[data-open],[data-action]');if(!target)return;
-      if(target.dataset.open){this.open(target.dataset.open);return;}
+      if(target.dataset.open){this.registry.state.menuOpen=false;this.open(target.dataset.open);return;}
       const s=this.registry.state,id=Number(target.dataset.id),w=s.windows.find(w=>w.id===id);
       switch(target.dataset.action){
+        case 'menu':s.menuOpen=!s.menuOpen;this.render();break;
         case 'home':s.active=0;this.render();break;
         case 'theme':s.theme=s.theme==='dark'?'light':'dark';this.render();break;
         case 'close':this.close(id);break;
@@ -163,6 +162,7 @@ class FlorestaSystem {
       }
     });
     document.addEventListener('pointerdown',e=>{
+      if(this.registry.state.menuOpen&&!e.target.closest('#floresta-menu,.brand-button')){this.registry.state.menuOpen=false;this.render();return;}
       const bar=e.target.closest('[data-drag]');if(!bar||e.target.closest('button'))return;
       const id=Number(bar.dataset.drag),w=this.registry.state.windows.find(w=>w.id===id);
       if(!w||w.max)return;
@@ -172,7 +172,7 @@ class FlorestaSystem {
       window.addEventListener('pointermove',move);window.addEventListener('pointerup',end,{once:true});
     });
     window.setInterval(()=>this.clock(),15000);
-    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&this.registry.state.mode!=='desktop'){this.registry.state.active=0;this.render();}});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&this.registry.state.menuOpen){this.registry.state.menuOpen=false;this.render();return;}if(e.key==='Escape'&&this.registry.state.mode!=='desktop'){this.registry.state.active=0;this.render();}});
   }
 }
 
