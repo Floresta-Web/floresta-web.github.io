@@ -77,7 +77,8 @@ class FlorestaSystem {
       .sheet{position:absolute;inset:42px 0 108px;background:#10271e;border-radius:25px 25px 0 0;z-index:60;overflow:auto;padding:24px;box-shadow:0 -15px 55px #0008}
       .sheet-header{display:flex;align-items:center;gap:12px;margin-bottom:24px}.sheet-header b{flex:1}.sheet-header button{background:#ffffff16;border:0;border-radius:12px;padding:10px 15px}
       .tablet .mobile-home{padding-top:45px}.tablet .app-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:25px}.tablet .sheet{inset:65px 8% 108px;border-radius:25px}
-      .mobile .topbar,.tablet .topbar{height:42px;background:transparent;border:0}.mobile .hint,.tablet .hint{display:none}
+      .mobile .topbar,.tablet .topbar{height:42px;background:transparent;border:0}
+      .mobile .topbar .brand-button{display:none!important}.mobile .hint,.tablet .hint{display:none}
       .light{--bg:#d7eadd;--panel:#e9f5eb;--text:#173426;--muted:#466654;--accent:#167a42;color-scheme:light}
       .light #root{background:linear-gradient(140deg,#b5d7bd,#d7eadd)}.light .topbar{color:#173426}.light .window,.light .sheet{background:#f1faf3;color:#173426}.light .tile{background:#d6ebdc;border-color:#b6d2bf}.light .window-body p,.light .sheet p{color:#466654}
       @media(max-width:680px){.app-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.app-launch .app-symbol{width:57px;height:57px}.tiles{grid-template-columns:1fr 1fr}.sheet{padding:18px}}
