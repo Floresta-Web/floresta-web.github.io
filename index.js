@@ -45,7 +45,7 @@ class FlorestaSystem {
       :root{font-family:'Quicksand',system-ui,-apple-system,sans-serif;color-scheme:dark;--bg:#071711;--panel:#12251e;--panel2:#1a3329;--line:#335647;--text:#e9f7ee;--muted:#a5c3b1;--accent:#8de6a7;--shadow:0 24px 80px #0008}
       *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);overflow:hidden}button,input{font:inherit}button{cursor:pointer;color:inherit}button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       #root{height:100dvh;min-height:380px;position:relative;overflow:hidden;background:radial-gradient(ellipse at 70% 10%,#25513b 0,transparent 52%),linear-gradient(145deg,#071711,#0d2920 65%,#061610)}
-      .wallpaper{position:absolute;inset:0;pointer-events:none;opacity:.3;background:repeating-radial-gradient(circle at 65% 65%,transparent 0 42px,#83bd9b0a 43px 44px)}
+      .wallpaper{position:absolute;inset:0;pointer-events:none;opacity:1;background:repeating-radial-gradient(circle at 65% 65%,transparent 0 42px,#83bd9b0a 43px 44px)}
       .wallpaper::after{content:'';position:absolute;inset:0;background:url('./floresta-logo.png') center center / min(58vmin,560px) auto no-repeat;opacity:.25;pointer-events:none}
       .topbar{height:46px;display:flex;align-items:center;gap:14px;padding:0 17px;background:#071811c9;border-bottom:1px solid #ffffff18;backdrop-filter:blur(20px);position:relative;z-index:100}
       .brand{font-weight:750;letter-spacing:.2px}.brand em{font-style:normal;color:var(--accent)}.topbar .spacer{flex:1}.hint{font-size:12px;color:var(--muted)}
