@@ -37,6 +37,8 @@ class FlorestaSystem {
   style(){
     const el=document.createElement('style');
     el.textContent=`
+      .market-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin:0 0 20px}.market-provider{min-width:0;border:1px solid var(--line);border-radius:14px;padding:13px;background:#ffffff07}.market-provider h2{font-size:16px;margin:0 0 6px}.market-provider [data-twelve-quotes]{min-height:330px}.market-provider .action{margin-top:10px}@media(max-width:850px){.market-split{grid-template-columns:1fr}}
+
       .market-head{display:flex;justify-content:space-between;gap:15px;align-items:start;flex-wrap:wrap}.market-tree{margin-top:18px}.market-tree details{border-left:2px solid #68bb8155;margin:9px 0 9px 10px;padding:4px 0 4px 13px}.market-tree summary{cursor:pointer;padding:10px;border-radius:10px;background:#ffffff0b;font-weight:650}.market-tree summary small{font-weight:400;color:var(--muted);margin-left:8px}.market-leaves{margin:9px 0}.market-leaf{display:flex;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid #ffffff15;font-size:13px}.market-leaf strong{font-variant-numeric:tabular-nums}.market-note{font-size:12px!important;color:var(--muted);line-height:1.5}
 
       @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap');
@@ -107,7 +109,7 @@ class FlorestaSystem {
     const el=document.querySelector('.window[data-window-id="'+w.id+'"]');
     if(w.pop){this.restorePopout(w.id);}
     if(el){const app=this.registry.apps[id];el.querySelector('.window-title strong').textContent=app.name.toUpperCase();const barcode=el.querySelector('.ean-code');if(barcode){barcode.replaceChildren(this.ean.barcode(w.ean));barcode.setAttribute('aria-label','Show window EAN '+w.ean);}
-      const body=el.querySelector('.window-body');this.motion.swap(body,()=>{body.innerHTML=this.appContent(id);});}
+      const body=el.querySelector('.window-body');this.motion.swap(body,()=>{body.innerHTML=this.appContent(id);if(id==='markets'){this.market.mount(body);this.market.paintQuotes();}});}
   }
   focus(id){this.registry.state.active=id;const el=document.querySelector('.window[data-window-id="'+id+'"]');if(el)el.style.zIndex='50';}
   close(id){if(this.popoutId){this.popIn();return;}this.restorePopout(id);this.audit.record('shell.close',{id});const el=document.querySelector('.window[data-window-id="'+id+'"]');
@@ -157,7 +159,7 @@ class FlorestaSystem {
       this.node('button',{'data-action':'max','data-id':w.id,'aria-label':'Maximize or restore',text:w.max?'❐':'□'}),
       this.node('button',{'data-action':'close','data-id':w.id,'aria-label':'Close',text:'×'})
     ]);
-    win.append(bar,this.node('article',{class:'window-body',html:this.appContent(w.app)}));
+    win.append(bar,this.node('article',{class:'window-body',html:this.appContent(w.app)}));if(w.app==='markets')queueMicrotask(()=>{this.market.mount(win);this.market.paintQuotes();});
     win.addEventListener('pointerdown',()=>{if(this.registry.state.active!==w.id){this.registry.state.active=w.id;document.querySelectorAll('.window').forEach(el=>el.style.zIndex='10');win.style.zIndex='50';}});
     return win;
   }
@@ -194,7 +196,7 @@ class FlorestaSystem {
       }
       root.append(this.node('nav',{class:'android-nav'},[this.node('button',{'data-action':'home','aria-label':'Go home'})]));
     }
-    root.append(this.ean.dialog());document.body.append(root);if(this.popoutId)document.body.classList.add('popout-view');this.clock();this.runtime.render();this.motion.morph(root);this.audit.record("shell.render",{mode:s.mode});
+    root.append(this.ean.dialog());document.body.append(root);if(s.active==='markets'||s.windows.some(w=>w.app==='markets'))queueMicrotask(()=>this.market.paint());if(this.popoutId)document.body.classList.add('popout-view');this.clock();this.runtime.render();this.motion.morph(root);this.audit.record("shell.render",{mode:s.mode});
   }
   clock(){
     const now=new Date();
@@ -206,6 +208,7 @@ class FlorestaSystem {
     window.addEventListener('message',event=>{if(event.origin===location.origin&&event.data?.type==='floresta-popin')this.restorePopout(event.data.id,false);});
     document.addEventListener('click',e=>{
       const target=e.target.closest('[data-open],[data-action]');if(!target)return;
+      if(target.dataset.action==='market-save-gateway'){try{this.market.saveGateway();}catch(e){alert(e.message);}return;}
       if(target.dataset.action==='market-refresh'){this.market.refresh();return;}
       if(target.dataset.open){this.registry.state.menuOpen=false;this.open(target.dataset.open);return;}
       const s=this.registry.state,id=Number(target.dataset.id),w=s.windows.find(w=>w.id===id);
@@ -340,11 +343,9 @@ class FlorestaEAN extends FlorestaModule {
  async camera(){const status=document.querySelector('#ean-status');if(!('BarcodeDetector' in window)){status.textContent='BarcodeDetector is unavailable here. Enter the EAN manually.';return;}try{const detector=new BarcodeDetector({formats:['ean_13']});this.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const video=document.querySelector('#ean-video');video.hidden=false;video.srcObject=this.stream;await video.play();const scan=async()=>{if(!this.stream)return;try{const found=await detector.detect(video);const code=found.find(item=>item.format==='ean_13')?.rawValue;if(code&&this.valid(code)){document.querySelector('#ean-input').value=code;this.stopCamera();this.resolveInput();return;}}catch(e){status.textContent=String(e);}this.scanTimer=setTimeout(scan,300);};scan();}catch(e){status.textContent='Camera unavailable: '+String(e);this.stopCamera();}}
  stopCamera(){clearTimeout(this.scanTimer);this.scanTimer=null;this.stream?.getTracks().forEach(track=>track.stop());this.stream=null;const video=document.querySelector('#ean-video');if(video){video.pause();video.srcObject=null;video.hidden=true;}}
 }
-new FlorestaSystem();
-
 class FlorestaMarketTree {
-  constructor(shell){this.shell=shell;this.registry={functions:{},feeds:{},state:{updated:null,loading:false,fx:null,error:null}};this.currencies=['EUR','GBP','JPY','CHF','INR','CAD','AUD'];}
-  start(){this.refresh();window.setInterval(()=>this.refresh(),300000);}
+  constructor(shell){this.shell=shell;this.registry={functions:{},feeds:{},state:{updated:null,loading:false,fx:null,error:null,quotes:{},symbols:['EUR/USD','GBP/USD','USD/JPY','USD/CHF','AUD/USD','USD/CAD'],stream:null,streamError:null}};this.currencies=['EUR','GBP','JPY','CHF','INR','CAD','AUD'];}
+  start(){this.refresh();this.connectGateway();window.setInterval(()=>this.refresh(),300000);}
   async refresh(){
     const st=this.registry.state;if(st.loading)return;st.loading=true;this.paint();
     try{
@@ -361,7 +362,7 @@ class FlorestaMarketTree {
     const st=this.registry.state,fx=st.fx;
     const rows=fx?this.currencies.map(code=>'<div class="market-leaf"><span>USD / '+code+'</span><strong>'+Number(fx.rates[code]).toLocaleString(undefined,{maximumFractionDigits:5})+'</strong></div>').join(''):'<p>Waiting for exchange-rate feed.</p>';
     const published=fx?.time_last_update_utc||'Not available';
-    return '<div class="market-head"><div><span class="pill">MARKET STATISTICS TREE</span><h1>Global Markets</h1><p>Stocks · Foreign exchange · Sovereign bonds</p></div><button class="action" data-action="market-refresh">↻ Refresh</button></div>'+
+    return '<div class="market-split"><section class="market-provider"><h2>TradingView · Forex Heatmap</h2><p class="market-note">Embedded TradingView market widget · source controls its own refresh and data delays.</p><div data-tradingview></div></section><section class="market-provider"><h2>Twelve Data · Live Prices</h2><p class="market-note" data-twelve-status>Not connected — configure a secure market gateway</p><div data-twelve-quotes></div><p class="market-note">Server-side API key required. Stream timestamps are supplied by Twelve Data. Prices are not simulated.</p><label class="market-note" for="market-gateway">Secure SSE gateway URL</label><input id="market-gateway" data-market-gateway-input placeholder="https://your-host.example/market/stream" value="'+this.escape(localStorage.getItem('floresta-market-gateway')||'')+'" style="width:100%;padding:10px;border-radius:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line)"><button class="action" data-action="market-save-gateway">Connect gateway</button></section></div><div class="market-head"><div><span class="pill">MARKET STATISTICS TREE</span><h1>Global Markets</h1><p>Stocks · Foreign exchange · Sovereign bonds</p></div><button class="action" data-action="market-refresh">↻ Refresh</button></div>'+
       '<div class="market-tree">'+
       '<details open><summary>🌍 Global Markets <small>3 branches</small></summary><div class="market-branches">'+
       '<details open><summary>💱 Currencies / FX <small>USD base · published reference rates</small></summary><div class="market-leaves">'+rows+'</div><p class="market-note">Provider: ExchangeRate-API open endpoint. Last published: '+this.escape(published)+'. These are periodically updated reference rates, not tick-by-tick FX prices.</p></details>'+
@@ -370,5 +371,74 @@ class FlorestaMarketTree {
       '</div></details></div>'+
       '<p class="market-note" role="status">'+(st.loading?'Refreshing…':st.error?'FX refresh error: '+this.escape(st.error):st.updated?'Last checked: '+st.updated.toLocaleString():'Connecting…')+'</p>';
   }
-  paint(){document.querySelectorAll('.window-body,.sheet article').forEach(el=>{const win=el.closest('.window');const id=win?this.shell.registry.state.windows.find(w=>String(w.id)===win.dataset.windowId)?.app:this.shell.registry.state.active;if(id==='markets')el.innerHTML=this.content();});}
+  paint(){
+    document.querySelectorAll('.window-body,.sheet article').forEach(el=>{
+      const win=el.closest('.window');
+      const id=win?this.shell.registry.state.windows.find(w=>String(w.id)===win.dataset.windowId)?.app:this.shell.registry.state.active;
+      if(id==='markets'){el.innerHTML=this.content();this.mount(el);}
+    });
+  }
+  mount(root){
+    const holder=root.querySelector('[data-tradingview]');
+    if(holder&&!holder.firstElementChild){
+      const widget=document.createElement('tv-forex-table');
+      widget.setAttribute('displayed-value','dailyChange');
+      widget.setAttribute('heatmap','');
+      widget.setAttribute('theme',this.shell.registry.state.theme==='light'?'light':'dark');
+      widget.style.cssText='display:block;width:100%;height:440px;min-height:380px';
+      holder.append(widget);
+      if(!document.querySelector('script[data-floresta-tv]')){
+        const script=document.createElement('script');
+        script.type='module';script.src='https://widgets.tradingview-widget.com/w/en/tv-forex-table.js';
+        script.dataset.florestaTv='true';document.head.append(script);
+      }
+    }
+  }
+  connectGateway(){
+    if(this.registry.state.stream)return;
+    const gateway=localStorage.getItem('floresta-market-gateway')||'';
+    if(!gateway)return;
+    try{
+      const url=new URL(gateway,location.href);
+      if(url.protocol!=='https:'&&url.hostname!=='localhost')throw Error('HTTPS gateway required');
+      const stream=new EventSource(url.href);this.registry.state.stream=stream;
+      stream.addEventListener('price',event=>{
+        try{const item=JSON.parse(event.data);if(item.event!=='price'||!Number.isFinite(Number(item.price)))return;
+          this.registry.state.quotes[item.symbol]={price:Number(item.price),timestamp:Number(item.timestamp)||Date.now()/1000};
+          this.paintQuotes();
+        }catch(_){}
+      });
+      stream.onopen=()=>{this.registry.state.streamError=null;this.paintQuotes();};
+      stream.onerror=()=>{this.registry.state.streamError='Gateway disconnected or reconnecting';this.paintQuotes();};
+    }catch(e){this.registry.state.streamError=e.message;this.paintQuotes();}
+  }
+  paintQuotes(){
+    document.querySelectorAll('[data-twelve-status]').forEach(el=>{
+      const st=this.registry.state;
+      el.textContent=st.streamError||(!st.stream?'Not connected — configure a secure market gateway':'Connected to configured market gateway; awaiting authorized price ticks');
+    });
+    document.querySelectorAll('[data-twelve-quotes]').forEach(el=>{
+      const quotes=this.registry.state.quotes;
+      el.replaceChildren();
+      for(const symbol of this.registry.state.symbols){
+        const quote=quotes[symbol],row=document.createElement('div');row.className='market-leaf';
+        const label=document.createElement('span');label.textContent=symbol;
+        const value=document.createElement('strong');
+        value.textContent=quote?quote.price.toLocaleString(undefined,{maximumFractionDigits:6}):'Awaiting tick';
+        row.append(label,value);el.append(row);
+      }
+    });
+  }
+  saveGateway(){
+    const field=document.querySelector('[data-market-gateway-input]');
+    if(!field)return;
+    const value=field.value.trim();
+    if(value){const url=new URL(value);if(url.protocol!=='https:'&&url.hostname!=='localhost')throw Error('Use HTTPS');}
+    this.registry.state.stream?.close();this.registry.state.stream=null;
+    if(value)localStorage.setItem('floresta-market-gateway',value);
+    else localStorage.removeItem('floresta-market-gateway');
+    this.connectGateway();this.paint();
+  }
 }
+new FlorestaSystem();
+
