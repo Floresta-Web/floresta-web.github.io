@@ -1,0 +1,44 @@
+name: Telegram GitHub service
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 'Administrative message from GitHub (max 500 characters)'
+        required: true
+        type: string
+  issues:
+    types: [opened]
+  release:
+    types: [published]
+permissions:
+  contents: read
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Send GitHub-scoped Telegram notification
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_GROUP_CHAT_ID: ${{ secrets.TELEGRAM_GROUP_CHAT_ID }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          MANUAL_MESSAGE: ${{ inputs.message }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TELEGRAM_BOT_TOKEN" && test -n "$TELEGRAM_GROUP_CHAT_ID"
+          case "$EVENT_NAME" in
+            issues) message="GitHub • $REPOSITORY • New issue #$ISSUE_NUMBER" ;;
+            release) message="GitHub • $REPOSITORY • Release published: ${RELEASE_TAG:0:80}" ;;
+            workflow_dispatch) message="GitHub • $REPOSITORY • ${MANUAL_MESSAGE:0:500}" ;;
+            *) echo 'Unsupported event'; exit 1 ;;
+          esac
+          curl --silent --show-error --fail --max-time 20 --output /dev/null \
+            --request POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=$TELEGRAM_GROUP_CHAT_ID" \
+            --data-urlencode "text=$message" \
+            --data-urlencode 'disable_web_page_preview=true'
+          echo 'GitHub-origin Telegram notification delivered.'
