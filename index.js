@@ -348,17 +348,44 @@ class FlorestaEAN extends FlorestaModule {
 }
 class FlorestaMarketTree {
   constructor(shell){this.shell=shell;this.registry={functions:{},feeds:{},state:{updated:null,loading:false,fx:null,error:null,quotes:{},symbols:['EUR/USD','GBP/USD','USD/JPY','USD/CHF','AUD/USD','USD/CAD'],stream:null,streamError:null}};this.currencies=['EUR','GBP','JPY','CHF','INR','CAD','AUD'];}
-  start(){this.refresh();window.setInterval(()=>this.refresh(),300000);}
+  start(){this.registry.state.timer=null;this.registry.state.failures=0;this.registry.state.quoteTimer=null;document.addEventListener('visibilitychange',()=>{if(!document.hidden){this.schedule(500);this.queueQuotes();}else{clearTimeout(this.registry.state.timer);this.registry.state.timer=null;}});this.schedule(0);}
   async refresh(){
-    const st=this.registry.state;if(st.loading)return;st.loading=true;this.paint();
+    const st=this.registry.state;if(st.loading||document.hidden)return;st.loading=true;this.paintFX();
     try{
       const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);
       let response;
       try{response=await fetch('https://open.er-api.com/v6/latest/USD',{signal:controller.signal,cache:'no-store'});}finally{clearTimeout(timeout);}
       if(!response.ok)throw Error('FX feed HTTP '+response.status);
       const data=await response.json();if(data.result!=='success'||!data.rates)throw Error('Invalid FX response');
-      st.fx=data;st.updated=new Date();st.error=null;
-    }catch(e){st.error=e.message;}finally{st.loading=false;this.paint();}
+      st.fx=data;st.updated=new Date();st.error=null;st.failures=0;
+    }catch(e){st.error=e.message;st.failures=Math.min(st.failures+1,5);}finally{st.loading=false;this.paintFX();this.schedule();}
+  }
+  schedule(delay){
+    const st=this.registry.state;clearTimeout(st.timer);st.timer=null;
+    if(document.hidden)return;
+    const now=Date.now(),published=Number(st.fx?.time_next_update_unix)*1000;
+    const next=Number.isFinite(published)&&published>now?published-now+5000:300000;
+    const wait=delay===undefined?(st.failures?Math.min(300000*2**st.failures,1800000):Math.max(60000,Math.min(next,1800000))):delay;
+    st.timer=setTimeout(()=>{st.timer=null;this.refresh();},wait);
+  }
+  paintFX(){
+    const st=this.registry.state,fx=st.fx;
+    document.querySelectorAll('[data-market-fx]').forEach(el=>{
+      const fragment=document.createDocumentFragment();
+      if(fx)for(const code of this.currencies){
+        const row=document.createElement('div');row.className='market-leaf';
+        const name=document.createElement('span');name.textContent='USD / '+code;
+        const price=document.createElement('strong');price.textContent=Number(fx.rates[code]).toLocaleString(undefined,{maximumFractionDigits:5});
+        row.append(name,price);fragment.append(row);
+      }else{const p=document.createElement('p');p.textContent='Waiting for exchange-rate feed.';fragment.append(p);}
+      el.replaceChildren(fragment);
+    });
+    document.querySelectorAll('[data-market-published]').forEach(el=>el.textContent=fx?.time_last_update_utc||'Not available');
+    document.querySelectorAll('[data-market-fx-status]').forEach(el=>el.textContent=st.loading?'Refreshing…':st.error?'FX refresh error: '+st.error:st.updated?'Last checked: '+st.updated.toLocaleString():'Connecting…');
+  }
+  queueQuotes(){
+    const st=this.registry.state;if(st.quoteTimer||document.hidden)return;
+    st.quoteTimer=setTimeout(()=>{st.quoteTimer=null;this.paintQuotes();},250);
   }
   escape(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   content(){
@@ -368,11 +395,11 @@ class FlorestaMarketTree {
     return '<div class="market-split"><section class="market-provider"><h2>TradingView · Forex Heatmap</h2><p class="market-note">Embedded TradingView market widget · source controls its own refresh and data delays.</p><div data-tradingview></div><details class="market-connection"><summary>TradingView account &amp; integration settings</summary><p class="market-note">TradingView personal subscriptions do not provide a general-purpose market-data API key. The public widget works without credentials.</p><p><a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">Open TradingView to sign in</a></p><p class="market-note">For an organization-owned developer or broker integration, request its official API documentation, authorized scopes, and callback requirements. Never enter TradingView passwords or unverified API keys here.</p><p class="market-note" data-tv-status>Integration status: public widget only. No account connection configured.</p><label class="market-note" for="tv-integration-type">Integration type</label><select id="tv-integration-type" data-tv-integration style="width:100%;padding:10px;border-radius:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line)"><option value="public">Public widget (no key)</option><option value="broker">Broker/developer integration (requires provider approval)</option><option value="custom">Authorized organization integration (requires documentation)</option></select><button class="action" data-action="market-tv-preference">Save integration preference</button><p class="market-note">This preference does not authenticate an account. Actual credential exchange must use a supported provider flow and secure backend.</p></details></section><section class="market-provider"><h2>Twelve Data · Live Prices</h2><p class="market-note" data-twelve-status>Enter your own Twelve Data API key to connect</p><div data-twelve-quotes></div><p class="market-note">Your personal API key is used directly in this browser session and is not stored or sent to Floresta servers. Provider entitlement limits apply.</p><label class="market-note" for="twelve-key">Personal Twelve Data API key</label><input id="twelve-key" type="password" data-twelve-key autocomplete="off" spellcheck="false" placeholder="Paste your personal API key" style="width:100%;padding:10px;border-radius:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line)"><button class="action" data-action="market-connect-key">Connect my account</button> <button class="action" data-action="market-disconnect-key">Disconnect</button><details><summary>Advanced: trusted SSE gateway</summary><p class="market-note">Only use a gateway you control. Do not paste your key into a gateway URL.</p><label class="market-note" for="market-gateway">Secure SSE gateway URL</label><input id="market-gateway" data-market-gateway-input placeholder="https://your-host.example/market/stream" value="'+this.escape(localStorage.getItem('floresta-market-gateway')||'')+'" style="width:100%;padding:10px;border-radius:8px;background:var(--panel2);color:var(--text);border:1px solid var(--line)"><button class="action" data-action="market-save-gateway">Connect gateway</button></details></section></div><div class="market-head"><div><span class="pill">MARKET STATISTICS TREE</span><h1>Global Markets</h1><p>Stocks · Foreign exchange · Sovereign bonds</p></div><button class="action" data-action="market-refresh">↻ Refresh</button></div>'+
       '<div class="market-tree">'+
       '<details open><summary>🌍 Global Markets <small>3 branches</small></summary><div class="market-branches">'+
-      '<details open><summary>💱 Currencies / FX <small>USD base · published reference rates</small></summary><div class="market-leaves">'+rows+'</div><p class="market-note">Provider: ExchangeRate-API open endpoint. Last published: '+this.escape(published)+'. These are periodically updated reference rates, not tick-by-tick FX prices.</p></details>'+
+      '<details open><summary>💱 Currencies / FX <small>USD base · published reference rates</small></summary><div class="market-leaves" data-market-fx>'+rows+'</div><p class="market-note">Provider: ExchangeRate-API open endpoint. Last published: <span data-market-published>'+this.escape(published)+'</span>. These are periodically updated reference rates, not tick-by-tick FX prices.</p></details>'+
       '<details open><summary>📈 Stock Markets <small>Market data connection required</small></summary><div class="market-leaves"><div class="market-leaf"><span>US equities · NYSE / Nasdaq</span><strong>Not connected</strong></div><div class="market-leaf"><span>Indices · S&amp;P 500 / Nasdaq 100</span><strong>Not connected</strong></div><div class="market-leaf"><span>European equities</span><strong>Not connected</strong></div></div><p class="market-note">Live stock quotes require an authorized market-data API or a backend feed. No simulated prices are shown.</p></details>'+
       '<details open><summary>🏦 Government Bonds <small>Yield feed required</small></summary><div class="market-leaves"><div class="market-leaf"><span>US Treasury · 2Y / 10Y / 30Y</span><strong>Not connected</strong></div><div class="market-leaf"><span>Euro area · 10Y sovereign yields</span><strong>Not connected</strong></div></div><p class="market-note">Bond yield and price data require a licensed or public delayed feed with provenance and timestamps.</p></details>'+
       '</div></details></div>'+
-      '<p class="market-note" role="status">'+(st.loading?'Refreshing…':st.error?'FX refresh error: '+this.escape(st.error):st.updated?'Last checked: '+st.updated.toLocaleString():'Connecting…')+'</p>';
+      '<p class="market-note" data-market-fx-status role="status">'+(st.loading?'Refreshing…':st.error?'FX refresh error: '+this.escape(st.error):st.updated?'Last checked: '+st.updated.toLocaleString():'Connecting…')+'</p>';
   }
   paint(){
     document.querySelectorAll('.window-body,.sheet article').forEach(el=>{
@@ -417,7 +444,7 @@ class FlorestaMarketTree {
       stream.addEventListener('price',event=>{
         try{const item=JSON.parse(event.data);if(item.event!=='price'||!Number.isFinite(Number(item.price)))return;
           this.registry.state.quotes[item.symbol]={price:Number(item.price),timestamp:Number(item.timestamp)||Date.now()/1000};
-          this.paintQuotes();
+          this.queueQuotes();
         }catch(_){}
       });
       stream.onopen=()=>{this.registry.state.streamError=null;this.paintQuotes();};
@@ -463,7 +490,7 @@ class FlorestaMarketTree {
         const item=JSON.parse(event.data);
         if(item.event==='price'&&st.symbols.includes(item.symbol)&&Number.isFinite(Number(item.price))){
           st.quotes[item.symbol]={price:Number(item.price),timestamp:Number(item.timestamp)||Date.now()/1000};
-          this.paintQuotes();
+          this.queueQuotes();
         }else if(item.event==='subscribe-status'&&item.status==='error'){
           st.streamError='Subscription unavailable for this key or plan';this.paintQuotes();
         }else if(item.event==='error'||item.status==='error'){
