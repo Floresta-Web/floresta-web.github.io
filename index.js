@@ -13,7 +13,7 @@ class FlorestaSystem {
       {id:'about',name:'About',icon:'◈',description:'Runtime and browser capabilities'}
     ];
     this.registry.apps=Object.fromEntries(this.apps.map(a=>[a.id,a]));
-    this.audit=new FlorestaAudit(this);this.runtime=new FlorestaRuntime(this);this.ean=new FlorestaEAN(this);this.motion=new FlorestaMotion(this);this.hardware=new FlorestaHardware(this);this.monitor=new FlorestaMonitor(this);
+    this.audit=new FlorestaAudit(this);this.runtime=new FlorestaRuntime(this);this.ean=new FlorestaEAN(this);this.dock=new FlorestaDock(this);this.motion=new FlorestaMotion(this);this.hardware=new FlorestaHardware(this);this.monitor=new FlorestaMonitor(this);
     this.market=new FlorestaMarketTree(this);this.popouts=new Map();this.popoutId=new URLSearchParams(location.search).get('floresta-popout');
     this.detect();this.style();this.render();this.events();this.runtime.start();this.ean.start();this.ean.openFromURL();this.audit.initialize();this.hardware.initialize();this.monitor.start();this.market.start();
     window.addEventListener('resize',()=>this.onResize());
@@ -70,13 +70,13 @@ class FlorestaSystem {
       .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-top:20px}.tile{background:#ffffff0a;border:1px solid #ffffff19;border-radius:15px;padding:17px;text-align:left}.tile b{display:block;margin-bottom:8px}.tile span{font-size:12px;color:var(--muted)}
       .action{background:#287e4d;border:1px solid #ffffff1e;border-radius:12px;padding:10px 16px}.action:hover{background:#389e62}
       .terminal{background:#07130e;border:1px solid #325442;padding:18px;border-radius:12px;color:#9bffc2;font:13px/1.9 ui-monospace,monospace;white-space:pre-wrap}
-      .mobile-home{position:absolute;inset:42px 0 0;display:flex;flex-direction:column;align-items:center;padding:26px 16px 95px}
+      .mobile-dock{position:absolute;bottom:calc(24px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);z-index:110;display:flex;align-items:center;justify-content:center;gap:14px;min-height:68px;padding:9px 16px;border-radius:24px;background:rgba(14,40,29,.56);border:1px solid #ffffff25;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);box-shadow:0 12px 35px #0005}.mobile-dock button{width:52px;height:52px;display:grid;place-items:center;background:#ffffff12;border:1px solid #ffffff24;border-radius:17px}.mobile-dock button:hover,.mobile-dock button:focus-visible{background:#ffffff2c}.mobile-dock svg{width:27px;height:27px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.mobile-dock button[aria-label="Scan window EAN with camera"]{background:rgba(73,158,104,.35)}.mobile .topbar .runtime-info,.tablet .topbar .runtime-info,.mobile .topbar .station-label,.tablet .topbar .station-label{display:none!important}.mobile-home{position:absolute;inset:42px 0 0;display:flex;flex-direction:column;align-items:center;padding:26px 16px 95px}
       .mobile-clock{font-size:clamp(45px,9vw,74px);font-weight:250;margin:16px 0 0}.mobile-date{color:#c4e0ce}.search{margin:25px 0;width:min(550px,100%);padding:14px 20px;border-radius:40px;background:#e3f4e8;color:#20442f;text-align:left;border:0}
       .app-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px 10px;width:min(570px,100%);margin-top:auto;margin-bottom:auto}.app-launch{display:grid;justify-items:center;gap:7px;border:0;background:none;font-size:12px;text-align:center}.app-launch .app-symbol{width:64px;height:64px;border-radius:22px;font-size:29px}
       .android-nav{position:absolute;bottom:0;left:0;right:0;height:32px;display:grid;place-items:center;z-index:105}.android-nav button{border:0;background:#d5eadb;width:105px;height:5px;border-radius:10px}
-      .sheet{position:absolute;inset:42px 0 27px;background:#10271e;border-radius:25px 25px 0 0;z-index:60;overflow:auto;padding:24px;box-shadow:0 -15px 55px #0008}
+      .sheet{position:absolute;inset:42px 0 108px;background:#10271e;border-radius:25px 25px 0 0;z-index:60;overflow:auto;padding:24px;box-shadow:0 -15px 55px #0008}
       .sheet-header{display:flex;align-items:center;gap:12px;margin-bottom:24px}.sheet-header b{flex:1}.sheet-header button{background:#ffffff16;border:0;border-radius:12px;padding:10px 15px}
-      .tablet .mobile-home{padding-top:45px}.tablet .app-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:25px}.tablet .sheet{inset:65px 8% 32px;border-radius:25px}
+      .tablet .mobile-home{padding-top:45px}.tablet .app-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:25px}.tablet .sheet{inset:65px 8% 108px;border-radius:25px}
       .mobile .topbar,.tablet .topbar{height:42px;background:transparent;border:0}.mobile .hint,.tablet .hint{display:none}
       .light{--bg:#d7eadd;--panel:#e9f5eb;--text:#173426;--muted:#466654;--accent:#167a42;color-scheme:light}
       .light #root{background:linear-gradient(140deg,#b5d7bd,#d7eadd)}.light .topbar{color:#173426}.light .window,.light .sheet{background:#f1faf3;color:#173426}.light .tile{background:#d6ebdc;border-color:#b6d2bf}.light .window-body p,.light .sheet p{color:#466654}
@@ -184,14 +184,11 @@ class FlorestaSystem {
     }else{
       const home=this.node('div',{class:'mobile-home'});
       home.append(this.node('div',{class:'mobile-clock',id:'bigclock'}),this.node('div',{class:'mobile-date',id:'date'}));
-      home.append(this.node('button',{class:'search','data-open':'files',text:'⌕  Search apps and files'}));
-      const grid=this.node('div',{class:'app-grid'});
-      this.apps.forEach(a=>grid.append(this.node('button',{class:'app-launch','data-open':a.id},[this.node('span',{class:'app-symbol',text:a.icon}),this.node('span',{text:a.name})])));
-      home.append(grid);home.append(this.node('button',{class:'action','data-action':'scan-ean',text:'▥  Scan window EAN'}));root.append(home);
+      root.append(home);root.append(this.dock.render());
       if(s.active&&typeof s.active==='string'){
         const a=this.registry.apps[s.active];
         root.append(this.node('section',{class:'sheet'},[
-          this.node('div',{class:'sheet-header'},[this.node('span',{text:a.icon}),this.node('b',{text:a.name}),this.node('button',{'data-action':'home',text:'✕ Close'})]),
+          this.node('div',{class:'sheet-header'},[this.node('b',{text:a.name}),this.node('button',{'data-action':'home',text:'✕ Close'})]),
           this.node('article',{html:this.appContent(a.id)})
         ]));
       }
@@ -319,6 +316,10 @@ class FlorestaRuntime extends FlorestaModule {
  }
 }
 
+class FlorestaDock extends FlorestaModule {
+ constructor(system){super('Dock',system);}
+ render(){this.register('render',{mode:this.system.registry.state.mode});const n=this.system.node.bind(this.system);const svg=(paths)=>{const el=document.createElementNS('http://www.w3.org/2000/svg','svg');el.setAttribute('viewBox','0 0 24 24');el.setAttribute('aria-hidden','true');el.innerHTML=paths;return el;};return n('nav',{class:'mobile-dock','aria-label':'Mobile system dock'},[n('button',{'data-action':'home','aria-label':'Home','title':'Home'},[svg('<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>')]),n('button',{'data-action':'scan-ean','aria-label':'Scan window EAN with camera','title':'Scan EAN'},[svg('<path d="M4 8V5a1 1 0 0 1 1-1h3m8 0h3a1 1 0 0 1 1 1v3M4 16v3a1 1 0 0 0 1 1h3m8 0h3a1 1 0 0 0 1-1v-3M4 12h16M7 9v6m3-6v6m3-6v6m3-6v6"/>')])]);}
+}
 class FlorestaEAN extends FlorestaModule {
  constructor(system){super('EAN',system);this.pool=new Map();this.channel=null;this.stream=null;this.scanTimer=null;this.fallbackScanner=null;this.selected=null;this.active=false;this.L=['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];this.G=['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111','0010001'];this.R=this.L.map(x=>[...x].map(v=>v==='0'?'1':'0').join(''));this.parity=['LLLLLL','LLGLGG','LLGGLG','LLGGGL','LGLLGG','LGGLLG','LGGGLL','LGLGLG','LGLGGL','LGGLGL'];}
  start(){this.register('start');if('BroadcastChannel' in window){this.channel=new BroadcastChannel('floresta-ean-v1');this.channel.onmessage=e=>this.receive(e.data);}this.active=true;}
