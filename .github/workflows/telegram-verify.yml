@@ -1,0 +1,29 @@
+name: Telegram bot verification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Validate bot identity and optional group membership
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_BOT_USERNAME: ${{ secrets.TELEGRAM_BOT_USERNAME }}
+          TELEGRAM_GROUP_CHAT_ID: ${{ secrets.TELEGRAM_GROUP_CHAT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TELEGRAM_BOT_TOKEN" || { echo 'Missing TELEGRAM_BOT_TOKEN'; exit 1; }
+          response="$(curl --silent --show-error --fail --max-time 15 --get "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe")"
+          echo "$response" | jq -e --arg username "${TELEGRAM_BOT_USERNAME#@}" '.ok == true and .result.is_bot == true and .result.username == $username' >/dev/null
+          echo 'Telegram bot identity verified.'
+          if [[ -n "$TELEGRAM_GROUP_CHAT_ID" ]]; then
+            response="$(curl --silent --show-error --fail --max-time 15 --get "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getChat" --data-urlencode "chat_id=$TELEGRAM_GROUP_CHAT_ID")"
+            echo "$response" | jq -e '.ok == true and (.result.type == "supergroup" or .result.type == "group")' >/dev/null
+            echo 'Telegram group verified.'
+          else
+            echo 'Group chat ID not configured. Group verification skipped.'
+          fi
