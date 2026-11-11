@@ -1,100 +1,177 @@
-/* Floresta Web: standalone, dependency-free browser monolith. */
-(() => {
-  'use strict';
-  const SCRIPT = new URL(document.currentScript?.src || 'index.js', location.href);
-  const style = document.createElement('style');
-  style.textContent = `
-    :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#071a14;color:#d8f8e3}
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center}
-    main{width:min(860px,94vw);padding:32px;border:1px solid #285c45;border-radius:22px;background:#0b251c}
-    h1{font-size:clamp(2rem,5vw,4rem);margin:0}p{line-height:1.6;color:#a4d5b9}
-    .panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px;margin-top:24px}
-    section{border:1px solid #285c45;padding:18px;border-radius:14px}canvas,svg{width:100%;height:160px}
-    button{background:#2c9962;border:0;color:white;padding:12px 18px;border-radius:9px;cursor:pointer}
-    small{color:#a4d5b9}
-  `;
-  document.head.append(style);
-  document.title = 'Floresta Web';
-  document.body.innerHTML = `<main><h1>Floresta Web</h1><p>Single-file JavaScript runtime · WebAssembly · WebGPU · SVG vectors · Web Audio</p>
-    <div class="panel">
-      <section><h2>Vector graphics</h2><svg viewBox="0 0 320 160" role="img" aria-label="Animated forest">
-        <defs><linearGradient id="leaf" x2="0" y2="1"><stop stop-color="#65db8a"/><stop offset="1" stop-color="#146b48"/></linearGradient></defs>
-        <circle cx="265" cy="32" r="20" fill="#d5c77a" opacity=".85"/>
-        <path d="M0 150 Q80 100 160 150 T320 150V160H0Z" fill="#164d37"/>
-        <g fill="url(#leaf)"><path d="M70 18 20 125H120Z"/><path d="M160 4 105 140H215Z"/><path d="M245 27 196 130H294Z"/></g>
-        <g stroke="#714b2d" stroke-width="9"><path d="M70 120v35M160 135v20M245 125v30"/></g></svg><small>Native scalable SVG</small></section>
-      <section><h2>WebGPU</h2><canvas id="gpu" width="480" height="300"></canvas><small id="gpu-status">Initializing…</small></section>
-      <section><h2>WebAssembly</h2><p id="wasm-status">Initializing…</p><small>Embedded WASM module, no extra file</small></section>
-      <section><h2>Web Audio</h2><p>Sound is enabled by user interaction.</p><button id="sound">Play forest tone</button><p id="audio-status"></p></section>
-    </div><p><small id="reload-status">Checking index.js for changes every 5 seconds.</small></p></main>`;
-  // WASM binary: exported add(i32,i32)->i32.
-  const wasm = new Uint8Array([0,97,115,109,1,0,0,0,1,7,1,96,2,127,127,1,127,3,2,1,0,7,7,1,3,97,100,100,0,0,10,9,1,7,0,32,0,32,1,106,11]);
-  WebAssembly.instantiate(wasm).then(({instance}) => {
-    document.querySelector('#wasm-status').textContent = 'WASM active: 20 + 26 = ' + instance.exports.add(20,26);
-  }).catch(e => document.querySelector('#wasm-status').textContent = 'WASM unavailable: ' + e.message);
-  async function gpu() {
-    const canvas = document.querySelector('#gpu'), label = document.querySelector('#gpu-status');
-    if (!navigator.gpu) { label.textContent = 'WebGPU unavailable in this browser'; return; }
-    try {
-      const adapter = await navigator.gpu.requestAdapter();
-      if (!adapter) throw Error('No GPU adapter');
-      const device = await adapter.requestDevice();
-      const context = canvas.getContext('webgpu');
-      const format = navigator.gpu.getPreferredCanvasFormat();
-      context.configure({device,format,alphaMode:'opaque'});
-      const shader = device.createShaderModule({code:`
-        @vertex fn vs(@builtin(vertex_index) i:u32)->@builtin(position) vec4f {
-          var pos=array<vec2f,3>(vec2f(0.,.8),vec2f(-.8,-.7),vec2f(.8,-.7));
-          return vec4f(pos[i],0.,1.);
-        }
-        @fragment fn fs()->@location(0) vec4f {return vec4f(.16,.75,.43,1.);}
-      `});
-      const pipeline = device.createRenderPipeline({layout:'auto',vertex:{module:shader,entryPoint:'vs'},fragment:{module:shader,entryPoint:'fs',targets:[{format}]} ,primitive:{topology:'triangle-list'}});
-      const encoder = device.createCommandEncoder();
-      const pass = encoder.beginRenderPass({colorAttachments:[{view:context.getCurrentTexture().createView(),loadOp:'clear',clearValue:{r:.03,g:.12,b:.09,a:1},storeOp:'store'}]});
-      pass.setPipeline(pipeline);pass.draw(3);pass.end();device.queue.submit([encoder.finish()]);
-      label.textContent = 'GPU render pipeline active';
-    } catch(e) {label.textContent = 'WebGPU initialization failed: ' + e.message;}
+/* Floresta Web — generated UI, no authored HTML/CSS files beyond bootstrap. */
+'use strict';
+class FlorestaSystem {
+  constructor() {
+    this.registry={state:{mode:'',windows:[],active:0,next:1,theme:'dark'},functions:{},apps:{}};
+    this.apps=[
+      {id:'welcome',name:'Welcome',icon:'🌲',description:'Floresta Web operating environment'},
+      {id:'files',name:'Files',icon:'📁',description:'Local workspace overview'},
+      {id:'terminal',name:'Terminal',icon:'⌘',description:'Read-only demonstration console'},
+      {id:'settings',name:'Settings',icon:'⚙',description:'Display and environment preferences'},
+      {id:'about',name:'About',icon:'◈',description:'Runtime and browser capabilities'}
+    ];
+    this.registry.apps=Object.fromEntries(this.apps.map(a=>[a.id,a]));
+    this.detect();this.style();this.render();this.events();
+    window.addEventListener('resize',()=>this.onResize());
   }
-  gpu();
-  document.querySelector('#sound').addEventListener('click', async () => {
-    const label=document.querySelector('#audio-status');
-    try {
-      const AudioContextClass=window.AudioContext||window.webkitAudioContext;
-      if (!AudioContextClass) throw Error('Web Audio unsupported');
-      const ctx=new AudioContextClass(); await ctx.resume();
-      const oscillator=ctx.createOscillator(),gain=ctx.createGain();
-      oscillator.type='sine';oscillator.frequency.setValueAtTime(220,ctx.currentTime);
-      oscillator.frequency.exponentialRampToValueAtTime(440,ctx.currentTime+0.6);
-      gain.gain.setValueAtTime(.0001,ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(.12,ctx.currentTime+.05);
-      gain.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+1);
-      oscillator.connect(gain).connect(ctx.destination);
-      oscillator.start();oscillator.stop(ctx.currentTime+1.05);
-      oscillator.onended=()=>ctx.close();
-      label.textContent='Tone played';
-    } catch(e) {label.textContent=e.message;}
-  });
-  // GitHub Pages is static: poll this script, compare SHA-256 of bytes, reload on change.
-  // Hashes avoid false positives from ETag or Last-Modified behavior.
-  const digest = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),x=>x.toString(16).padStart(2,'0')).join('');
-  let lastHash=null,checking=false;
-  async function checkSource() {
-    if(checking || document.hidden) return;
-    checking=true;
-    try {
-      const url=new URL(SCRIPT);url.searchParams.set('_check',Date.now().toString());
-      const response=await fetch(url,{cache:'no-store'});
-      if(!response.ok) throw Error('HTTP '+response.status);
-      const hash=await digest(await response.arrayBuffer());
-      if(lastHash!==null && lastHash!==hash) {location.reload();return;}
-      lastHash=hash;
-      document.querySelector('#reload-status').textContent='Live update monitor active · index.js SHA-256 '+hash.slice(0,12);
-    } catch(e) {
-      document.querySelector('#reload-status').textContent='Update check failed: '+e.message;
-    } finally {checking=false;}
+  detect() {
+    const ua=navigator.userAgent, touch=navigator.maxTouchPoints>0;
+    this.registry.state.platform=/Android/i.test(ua)?'Android':/iPad|iPhone/i.test(ua)?'iOS':/Windows/i.test(ua)?'Windows':/Mac/i.test(ua)?'macOS':/Linux/i.test(ua)?'Linux':'Unknown';
+    this.registry.state.browser=/Edg\//.test(ua)?'Edge':/Firefox\//.test(ua)?'Firefox':/Chrome\//.test(ua)?'Chrome':/Safari\//.test(ua)?'Safari':'Browser';
+    this.registry.state.touch=touch;
+    this.registry.state.mode=this.mode();
   }
-  checkSource();
-  setInterval(checkSource,5000);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkSource();});
-})();
+  mode(){
+    const w=window.innerWidth;
+    return w<680?'mobile':w<1100&&(this.registry.state.touch||w<900)?'tablet':'desktop';
+  }
+  onResize(){
+    const next=this.mode();
+    if(next!==this.registry.state.mode){this.registry.state.mode=next;this.render();}
+  }
+  style(){
+    const el=document.createElement('style');
+    el.textContent=`
+      :root{font-family:Inter,system-ui,-apple-system,sans-serif;color-scheme:dark;--bg:#071711;--panel:#12251e;--panel2:#1a3329;--line:#335647;--text:#e9f7ee;--muted:#a5c3b1;--accent:#8de6a7;--shadow:0 24px 80px #0008}
+      *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);overflow:hidden}button,input{font:inherit}button{cursor:pointer;color:inherit}button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+      #root{height:100dvh;min-height:380px;position:relative;overflow:hidden;background:radial-gradient(ellipse at 70% 10%,#25513b 0,transparent 52%),linear-gradient(145deg,#071711,#0d2920 65%,#061610)}
+      .wallpaper{position:absolute;inset:0;pointer-events:none;opacity:.3;background:repeating-radial-gradient(circle at 65% 65%,transparent 0 42px,#83bd9b0a 43px 44px)}
+      .topbar{height:46px;display:flex;align-items:center;gap:14px;padding:0 17px;background:#071811c9;border-bottom:1px solid #ffffff18;backdrop-filter:blur(20px);position:relative;z-index:100}
+      .brand{font-weight:750;letter-spacing:.2px}.brand em{font-style:normal;color:var(--accent)}.topbar .spacer{flex:1}.hint{font-size:12px;color:var(--muted)}
+      .clock{font-size:13px;font-variant-numeric:tabular-nums}.workspace{position:absolute;inset:46px 0 65px}.desktop-icons{position:absolute;top:24px;left:22px;display:grid;gap:13px}
+      .desktop-icon{width:100px;display:grid;justify-items:center;gap:7px;padding:12px 5px;border:0;border-radius:15px;background:transparent;font-size:12px}
+      .desktop-icon:hover,.desktop-icon:focus-visible{background:#ffffff15}.app-symbol{font-size:30px;display:grid;place-items:center;width:58px;height:58px;background:linear-gradient(145deg,#24513a,#163326);border:1px solid #ffffff24;border-radius:18px}
+      .taskbar{position:absolute;bottom:0;left:0;right:0;height:65px;display:flex;justify-content:center;align-items:center;gap:10px;background:#06150fd9;border-top:1px solid #ffffff1c;backdrop-filter:blur(22px);z-index:100}
+      .dock-btn{height:46px;min-width:46px;border:1px solid #ffffff20;border-radius:15px;background:#ffffff0b;font-size:24px}.dock-btn:hover,.dock-btn.selected{background:#357d52}
+      .window{position:absolute;top:10%;left:18%;width:min(690px,75vw);height:min(500px,75vh);min-width:300px;min-height:230px;border:1px solid #729c8050;border-radius:17px;background:#10241deF;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;backdrop-filter:blur(30px)}
+      .window.maximized{inset:8px!important;width:auto!important;height:auto!important}.window.minimized{display:none}
+      .window-title{height:48px;display:flex;align-items:center;gap:10px;padding:0 13px;background:#ffffff09;border-bottom:1px solid #ffffff14;cursor:grab;user-select:none;touch-action:none}
+      .window-title strong{font-size:14px;flex:1}.window-title button{border:0;background:#ffffff13;border-radius:9px;width:30px;height:30px}.window-title button:hover{background:#ffffff2c}
+      .window-body{overflow:auto;flex:1;padding:25px}.window-body h1,.sheet h1{font-size:clamp(23px,3vw,32px);margin:0 0 8px}.window-body p,.sheet p{color:var(--muted);line-height:1.6}
+      .pill{display:inline-block;border:1px solid #7edda44a;background:#2d674236;color:#a8f1bf;border-radius:30px;padding:6px 12px;font-size:12px}
+      .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-top:20px}.tile{background:#ffffff0a;border:1px solid #ffffff19;border-radius:15px;padding:17px;text-align:left}.tile b{display:block;margin-bottom:8px}.tile span{font-size:12px;color:var(--muted)}
+      .action{background:#287e4d;border:1px solid #ffffff1e;border-radius:12px;padding:10px 16px}.action:hover{background:#389e62}
+      .terminal{background:#07130e;border:1px solid #325442;padding:18px;border-radius:12px;color:#9bffc2;font:13px/1.9 ui-monospace,monospace;white-space:pre-wrap}
+      .mobile-home{position:absolute;inset:42px 0 0;display:flex;flex-direction:column;align-items:center;padding:26px 16px 95px}
+      .mobile-clock{font-size:clamp(45px,9vw,74px);font-weight:250;margin:16px 0 0}.mobile-date{color:#c4e0ce}.search{margin:25px 0;width:min(550px,100%);padding:14px 20px;border-radius:40px;background:#e3f4e8;color:#20442f;text-align:left;border:0}
+      .app-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px 10px;width:min(570px,100%);margin-top:auto;margin-bottom:auto}.app-launch{display:grid;justify-items:center;gap:7px;border:0;background:none;font-size:12px;text-align:center}.app-launch .app-symbol{width:64px;height:64px;border-radius:22px;font-size:29px}
+      .android-nav{position:absolute;bottom:0;left:0;right:0;height:32px;display:grid;place-items:center;z-index:105}.android-nav button{border:0;background:#d5eadb;width:105px;height:5px;border-radius:10px}
+      .sheet{position:absolute;inset:42px 0 27px;background:#10271e;border-radius:25px 25px 0 0;z-index:60;overflow:auto;padding:24px;box-shadow:0 -15px 55px #0008}
+      .sheet-header{display:flex;align-items:center;gap:12px;margin-bottom:24px}.sheet-header b{flex:1}.sheet-header button{background:#ffffff16;border:0;border-radius:12px;padding:10px 15px}
+      .tablet .mobile-home{padding-top:45px}.tablet .app-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:25px}.tablet .sheet{inset:65px 8% 32px;border-radius:25px}
+      .mobile .topbar,.tablet .topbar{height:42px;background:transparent;border:0}.mobile .hint,.tablet .hint{display:none}
+      .light{--bg:#d7eadd;--panel:#e9f5eb;--text:#173426;--muted:#466654;--accent:#167a42;color-scheme:light}
+      .light #root{background:linear-gradient(140deg,#b5d7bd,#d7eadd)}.light .topbar{color:#173426}.light .window,.light .sheet{background:#f1faf3;color:#173426}.light .tile{background:#d6ebdc;border-color:#b6d2bf}.light .window-body p,.light .sheet p{color:#466654}
+      @media(max-width:680px){.app-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.app-launch .app-symbol{width:57px;height:57px}.tiles{grid-template-columns:1fr 1fr}.sheet{padding:18px}}
+    `;
+    document.head.appendChild(el);
+  }
+  node(tag,attrs={},children=[]){
+    const el=document.createElement(tag);
+    Object.entries(attrs).forEach(([k,v])=>{if(k==='class')el.className=v;else if(k==='text')el.textContent=v;else if(k==='html')el.innerHTML=v;else if(k==='style')Object.assign(el.style,v);else el.setAttribute(k,v);});
+    children.forEach(c=>el.append(c));return el;
+  }
+  appContent(id){
+    const s=this.registry.state;
+    if(id==='welcome')return '<span class="pill">● Runtime ready</span><h1>Welcome to Floresta Web</h1><p>A browser-based environment with three adaptive operating systems: desktop windows, Android-inspired tablet and mobile.</p><div class="tiles"><div class="tile"><b>Desktop</b><span>Movable, maximizable windows and taskbar</span></div><div class="tile"><b>Tablet</b><span>Touch-first launcher and large application sheets</span></div><div class="tile"><b>Mobile</b><span>Compact launcher and gesture-style navigation</span></div></div>';
+    if(id==='files')return '<h1>Files</h1><p>This is a frontend workspace shell. Browser file access will require explicit user selection and permission.</p><div class="tiles"><div class="tile"><b>📂 Workspace</b><span>No files loaded</span></div><div class="tile"><b>📦 Packages</b><span>Not connected</span></div></div>';
+    if(id==='terminal')return '<h1>Terminal</h1><p>Demonstration console — no operating system commands are executed.</p><div class="terminal">floresta@web:~$ system info\nPlatform: '+s.platform+'\nBrowser: '+s.browser+'\nDisplay: '+s.mode+'\nJavaScript: active\nfloresta@web:~$ _</div>';
+    if(id==='settings')return '<h1>Settings</h1><p>Appearance and display profile</p><button class="action" data-action="theme">Toggle light / dark theme</button><div class="tiles"><div class="tile"><b>Automatic display</b><span>'+s.mode+'</span></div><div class="tile"><b>Touch support</b><span>'+(s.touch?'Available':'Not detected')+'</span></div></div>';
+    return '<h1>About Floresta Web</h1><p>JavaScript-generated user interface on GitHub Pages.</p><div class="tiles"><div class="tile"><b>Browser</b><span>'+s.browser+'</span></div><div class="tile"><b>Platform</b><span>'+s.platform+'</span></div><div class="tile"><b>WebAssembly</b><span>'+(typeof WebAssembly!=='undefined'?'Supported':'Unavailable')+'</span></div><div class="tile"><b>WebGPU</b><span>'+(navigator.gpu?'Available':'Unavailable')+'</span></div></div>';
+  }
+  open(id){
+    if(!this.registry.apps[id])return;
+    const s=this.registry.state;
+    if(s.mode!=='desktop'){s.active=id;this.render();return;}
+    const existing=s.windows.find(w=>w.app===id);
+    if(existing){existing.min=false;this.focus(existing.id);}else{
+      const w={id:s.next++,app:id,min:false,max:false,x:Math.min(220+30*s.windows.length,window.innerWidth-400),y:Math.min(75+25*s.windows.length,window.innerHeight-330)};
+      s.windows.push(w);this.focus(w.id);
+    }
+  }
+  focus(id){this.registry.state.active=id;this.render();}
+  close(id){const s=this.registry.state;s.windows=s.windows.filter(w=>w.id!==id);s.active=s.windows.at(-1)?.id||0;this.render();}
+  windowNode(w){
+    const a=this.registry.apps[w.app],active=this.registry.state.active===w.id;
+    const win=this.node('section',{class:'window'+(w.max?' maximized':'')+(w.min?' minimized':''),style:{left:w.x+'px',top:w.y+'px',zIndex:active?'50':String(10+w.id)}});
+    const bar=this.node('header',{class:'window-title','data-drag':String(w.id)},[
+      this.node('span',{text:a.icon}),this.node('strong',{text:a.name}),
+      this.node('button',{'data-action':'min','data-id':w.id,'aria-label':'Minimize',text:'−'}),
+      this.node('button',{'data-action':'max','data-id':w.id,'aria-label':'Maximize',text:'□'}),
+      this.node('button',{'data-action':'close','data-id':w.id,'aria-label':'Close',text:'×'})
+    ]);
+    win.append(bar,this.node('article',{class:'window-body',html:this.appContent(w.app)}));
+    win.addEventListener('pointerdown',()=>{if(this.registry.state.active!==w.id){this.registry.state.active=w.id;document.querySelectorAll('.window').forEach(el=>el.style.zIndex='10');win.style.zIndex='50';}});
+    return win;
+  }
+  render(){
+    const s=this.registry.state;
+    document.title='Floresta Web · '+s.mode[0].toUpperCase()+s.mode.slice(1);
+    document.body.className=(s.theme==='light'?'light ':'')+s.mode;
+    document.body.replaceChildren();
+    const root=this.node('main',{id:'root',class:s.mode});
+    root.append(this.node('div',{class:'wallpaper'}));
+    const top=this.node('header',{class:'topbar'},[
+      this.node('span',{class:'brand',html:'🌲 Floresta <em>Web</em>'}),
+      this.node('span',{class:'hint',text:s.mode==='desktop'?'Desktop window system':'Android-inspired '+s.mode+' system'}),
+      this.node('span',{class:'spacer'}),this.node('span',{class:'clock',id:'clock'})
+    ]);root.append(top);
+    if(s.mode==='desktop'){
+      const space=this.node('div',{class:'workspace'});
+      const icons=this.node('div',{class:'desktop-icons'});
+      this.apps.forEach(a=>icons.append(this.node('button',{class:'desktop-icon','data-open':a.id},[this.node('span',{class:'app-symbol',text:a.icon}),this.node('span',{text:a.name})])));
+      space.append(icons);s.windows.forEach(w=>space.append(this.windowNode(w)));root.append(space);
+      const dock=this.node('nav',{class:'taskbar','aria-label':'Desktop taskbar'});
+      this.apps.forEach(a=>dock.append(this.node('button',{class:'dock-btn'+(s.windows.some(w=>w.app===a.id&&!w.min)?' selected':''),'data-open':a.id,title:a.name,text:a.icon})));
+      root.append(dock);
+    }else{
+      const home=this.node('div',{class:'mobile-home'});
+      home.append(this.node('div',{class:'mobile-clock',id:'bigclock'}),this.node('div',{class:'mobile-date',id:'date'}));
+      home.append(this.node('button',{class:'search','data-open':'files',text:'⌕  Search apps and files'}));
+      const grid=this.node('div',{class:'app-grid'});
+      this.apps.forEach(a=>grid.append(this.node('button',{class:'app-launch','data-open':a.id},[this.node('span',{class:'app-symbol',text:a.icon}),this.node('span',{text:a.name})])));
+      home.append(grid);root.append(home);
+      if(s.active&&typeof s.active==='string'){
+        const a=this.registry.apps[s.active];
+        root.append(this.node('section',{class:'sheet'},[
+          this.node('div',{class:'sheet-header'},[this.node('span',{text:a.icon}),this.node('b',{text:a.name}),this.node('button',{'data-action':'home',text:'✕ Close'})]),
+          this.node('article',{html:this.appContent(a.id)})
+        ]));
+      }
+      root.append(this.node('nav',{class:'android-nav'},[this.node('button',{'data-action':'home','aria-label':'Go home'})]));
+    }
+    document.body.append(root);this.clock();
+  }
+  clock(){
+    const now=new Date();
+    const c=document.querySelector('#clock');if(c)c.textContent=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    const b=document.querySelector('#bigclock');if(b)b.textContent=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    const d=document.querySelector('#date');if(d)d.textContent=now.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'});
+  }
+  events(){
+    document.addEventListener('click',e=>{
+      const target=e.target.closest('[data-open],[data-action]');if(!target)return;
+      if(target.dataset.open){this.open(target.dataset.open);return;}
+      const s=this.registry.state,id=Number(target.dataset.id),w=s.windows.find(w=>w.id===id);
+      switch(target.dataset.action){
+        case 'home':s.active=0;this.render();break;
+        case 'theme':s.theme=s.theme==='dark'?'light':'dark';this.render();break;
+        case 'close':this.close(id);break;
+        case 'min':if(w){w.min=true;this.render();}break;
+        case 'max':if(w){w.max=!w.max;this.focus(id);}break;
+      }
+    });
+    document.addEventListener('pointerdown',e=>{
+      const bar=e.target.closest('[data-drag]');if(!bar||e.target.closest('button'))return;
+      const id=Number(bar.dataset.drag),w=this.registry.state.windows.find(w=>w.id===id);
+      if(!w||w.max)return;
+      const sx=e.clientX,sy=e.clientY,ox=w.x,oy=w.y,win=bar.parentElement;
+      const move=ev=>{w.x=Math.max(0,Math.min(window.innerWidth-100,ox+ev.clientX-sx));w.y=Math.max(0,Math.min(window.innerHeight-140,oy+ev.clientY-sy));win.style.left=w.x+'px';win.style.top=w.y+'px';};
+      const end=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',end);};
+      window.addEventListener('pointermove',move);window.addEventListener('pointerup',end,{once:true});
+    });
+    window.setInterval(()=>this.clock(),15000);
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&this.registry.state.mode!=='desktop'){this.registry.state.active=0;this.render();}});
+  }
+}
+new FlorestaSystem();
