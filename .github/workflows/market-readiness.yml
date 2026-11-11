@@ -1,0 +1,26 @@
+name: Market gateway readiness
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Twelve Data credential configuration without disclosing it
+        env:
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+        shell: bash
+        run: |
+          if [ -z "$TWELVEDATA_API_KEY" ]; then
+            echo "::notice::TWELVEDATA_API_KEY is not configured. Create your own key at twelvedata.com."
+            exit 0
+          fi
+          echo "::add-mask::$TWELVEDATA_API_KEY"
+          response=$(curl -fsS --max-time 15 -G 'https://api.twelvedata.com/quote' --data-urlencode 'symbol=EUR/USD' --data-urlencode "apikey=$TWELVEDATA_API_KEY" || true)
+          if [ -z "$response" ]; then
+            echo "::warning::API unreachable or returned an empty response"
+            exit 1
+          fi
+          RESPONSE="$response" node -e 'const d=JSON.parse(process.env.RESPONSE);if(d.status==="error"||d.code){console.log("API responded with an error; verify permissions and quota");process.exit(1)}console.log("Twelve Data API responded. Streaming entitlements must be verified separately.")'
+          echo "::notice::GitHub Actions secrets are NOT available to GitHub Pages or the running gateway."
