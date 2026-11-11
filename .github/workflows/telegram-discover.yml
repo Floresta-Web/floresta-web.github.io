@@ -1,0 +1,24 @@
+name: Discover Telegram group
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Discover group ID from recent bot updates
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TELEGRAM_BOT_TOKEN"
+          response="$(curl --silent --show-error --fail --max-time 15 --get "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates" --data-urlencode 'limit=100' --data-urlencode 'timeout=0')"
+          if ! echo "$response" | jq -e '.ok == true' >/dev/null; then echo 'Telegram getUpdates failed (possibly a webhook is active).'; exit 1; fi
+          ids="$(echo "$response" | jq -r '[.result[] | (.message.chat // .channel_post.chat // .my_chat_member.chat // .chat_member.chat // empty) | select(.type == "supergroup" or .type == "group") | .id] | unique | .[]')"
+          if [[ -z "$ids" ]]; then echo 'No group updates found. Send a fresh group message mentioning the bot; if a webhook is configured, getUpdates will not work.'; exit 1; fi
+          echo 'Candidate Telegram group chat IDs (confirm the correct group before saving):'
+          printf '%s\n' "$ids"
+          echo 'Set TELEGRAM_GROUP_CHAT_ID in GitHub Actions repository secrets, then rerun telegram-verify.yml.'
