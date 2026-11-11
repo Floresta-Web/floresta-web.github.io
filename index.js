@@ -2,7 +2,7 @@
 'use strict';
 class FlorestaSystem {
   constructor() {
-    this.registry={state:{mode:'',windows:[],active:0,next:1,theme:'dark',menuOpen:false},functions:{},apps:{}};
+    this.registry={state:{mode:'',windows:[],active:0,next:1,theme:'dark',menuOpen:false,popped:false},functions:{},apps:{}};
     this.apps=[
       {id:'welcome',name:'Welcome',icon:'🌲',description:'Floresta Web operating environment'},
       {id:'files',name:'Files',icon:'📁',description:'Local workspace overview'},
@@ -46,6 +46,8 @@ class FlorestaSystem {
       .desktop-icon:hover,.desktop-icon:focus-visible{background:#ffffff15}.app-symbol{font-size:30px;display:grid;place-items:center;width:58px;height:58px;background:linear-gradient(145deg,#24513a,#163326);border:1px solid #ffffff24;border-radius:18px}
       .taskbar{position:absolute;bottom:0;left:0;right:0;height:65px;display:flex;justify-content:center;align-items:center;gap:10px;background:#06150fd9;border-top:1px solid #ffffff1c;backdrop-filter:blur(22px);z-index:100}
       .dock-btn{height:46px;min-width:46px;border:1px solid #ffffff20;border-radius:15px;background:#ffffff0b;font-size:24px}.dock-btn:hover,.dock-btn.selected{background:#357d52}
+      .topbar{border:0;background:rgba(7,24,17,.4)}.floresta-menu{border:0;background:rgba(16,41,31,.4);backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px)}
+      .window{border:0!important;background:rgba(16,36,29,.6)!important;backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px)}.window-title{background:rgba(255,255,255,.04)!important;border:0!important;backdrop-filter:blur(25px)}.window-body{background:rgba(16,36,29,.6)}.window-title button{border:0!important;background:rgba(255,255,255,.05)!important;color:inherit}.window-title button:hover{background:rgba(255,255,255,.17)!important}.window.popped{position:fixed;inset:55px 24px 24px!important;width:auto!important;height:auto!important;z-index:90!important}
       .window{position:absolute;top:10%;left:18%;width:min(690px,75vw);height:min(500px,75vh);min-width:300px;min-height:230px;border:1px solid #729c8050;border-radius:17px;background:#10241deF;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;backdrop-filter:blur(30px)}
       .window.maximized{inset:8px!important;width:auto!important;height:auto!important}.window.minimized{display:none}
       .window-title{height:48px;display:flex;align-items:center;gap:10px;padding:0 13px;background:#ffffff09;border-bottom:1px solid #ffffff14;cursor:grab;user-select:none;touch-action:none}
@@ -82,25 +84,33 @@ class FlorestaSystem {
     if(id==='settings')return '<h1>Settings</h1><p>Appearance and display profile</p><button class="action" data-action="theme">Toggle light / dark theme</button><div class="tiles"><div class="tile"><b>Automatic display</b><span>'+s.mode+'</span></div><div class="tile"><b>Touch support</b><span>'+(s.touch?'Available':'Not detected')+'</span></div></div>';
     return '<h1>About Floresta Web</h1><p>JavaScript-generated user interface on GitHub Pages.</p><div class="tiles"><div class="tile"><b>Browser</b><span>'+s.browser+'</span></div><div class="tile"><b>Platform</b><span>'+s.platform+'</span></div><div class="tile"><b>WebAssembly</b><span>'+(typeof WebAssembly!=='undefined'?'Supported':'Unavailable')+'</span></div><div class="tile"><b>WebGPU</b><span>'+(navigator.gpu?'Available':'Unavailable')+'</span></div></div>';
   }
-  open(id){this.audit.record("shell.open",{id});
-    if(!this.registry.apps[id])return;
-    const s=this.registry.state;
-    if(s.mode!=='desktop'){s.active=id;this.render();return;}
-    const existing=s.windows.find(w=>w.app===id);
-    if(existing){existing.min=false;this.focus(existing.id);}else{
-      const w={id:s.next++,app:id,min:false,max:false,x:Math.min(220+30*s.windows.length,window.innerWidth-400),y:Math.min(75+25*s.windows.length,window.innerHeight-330)};
-      s.windows.push(w);this.focus(w.id);
-    }
+  // Session pool: one persistent desktop window, switching its content without replacing the page.
+  open(id){this.audit.record('shell.open',{id});if(!this.registry.apps[id])return;
+    const state=this.registry.state;state.menuOpen=false;this.toggleMenu(false);
+    if(state.mode!=='desktop'){state.active=id;this.render();return;}
+    let w=state.windows[0];
+    if(!w){w={id:state.next++,app:id,max:false,pop:false,x:Math.max(16,Math.min(220,innerWidth-380)),y:75};state.windows=[w];state.active=w.id;
+      const space=document.querySelector('.workspace');if(space){const el=this.windowNode(w);space.append(el);this.motion.enter(el);}return;}
+    w.app=id;state.active=w.id;
+    const el=document.querySelector('.window[data-window-id="'+w.id+'"]');
+    if(el){const app=this.registry.apps[id];el.querySelector('.window-title strong').textContent=app.name;el.querySelector('.window-title .window-icon').textContent=app.icon;
+      const body=el.querySelector('.window-body');this.motion.swap(body,()=>{body.innerHTML=this.appContent(id);});}
   }
-  focus(id){this.registry.state.active=id;this.render();}
-  close(id){this.audit.record("shell.close",{id});const s=this.registry.state;s.windows=s.windows.filter(w=>w.id!==id);s.active=s.windows.at(-1)?.id||0;this.render();}
+  focus(id){this.registry.state.active=id;const el=document.querySelector('.window[data-window-id="'+id+'"]');if(el)el.style.zIndex='50';}
+  close(id){this.audit.record('shell.close',{id});const el=document.querySelector('.window[data-window-id="'+id+'"]');
+    const done=()=>{el?.remove();this.registry.state.windows=this.registry.state.windows.filter(w=>w.id!==id);this.registry.state.active=0;};
+    if(el)this.motion.leave(el,done);else done();
+  }
+  toggleMenu(open){const state=this.registry.state;state.menuOpen=open;const menu=document.querySelector('#floresta-menu'),button=document.querySelector('.brand-button');if(menu){menu.hidden=!open;if(open)this.motion.enter(menu);}if(button)button.setAttribute('aria-expanded',String(open));}
+  togglePop(w){w.pop=!w.pop;const el=document.querySelector('.window[data-window-id="'+w.id+'"]');if(el){el.classList.toggle('popped',w.pop);el.querySelector('[data-action=pop]').textContent=w.pop?'↙':'↗';el.querySelector('[data-action=pop]').setAttribute('aria-label',w.pop?'Pop in':'Pop out');this.motion.pulse(el);}}
+  toggleMax(w){w.max=!w.max;const el=document.querySelector('.window[data-window-id="'+w.id+'"]');if(el){el.classList.toggle('maximized',w.max);el.querySelector('[data-action=max]').textContent=w.max?'❐':'□';this.motion.pulse(el);}}
   windowNode(w){
     const a=this.registry.apps[w.app],active=this.registry.state.active===w.id;
-    const win=this.node('section',{class:'window'+(w.max?' maximized':'')+(w.min?' minimized':''),style:{left:w.x+'px',top:w.y+'px',zIndex:active?'50':String(10+w.id)}});
+    const win=this.node('section',{ 'data-window-id':String(w.id),class:'window'+(w.max?' maximized':'')+(w.pop?' popped':''),style:{left:w.x+'px',top:w.y+'px',zIndex:active?'50':String(10+w.id)}});
     const bar=this.node('header',{class:'window-title','data-drag':String(w.id)},[
-      this.node('span',{text:a.icon}),this.node('strong',{text:a.name}),
-      this.node('button',{'data-action':'min','data-id':w.id,'aria-label':'Minimize',text:'−'}),
-      this.node('button',{'data-action':'max','data-id':w.id,'aria-label':'Maximize',text:'□'}),
+      this.node('span',{class:'window-icon',text:a.icon}),this.node('strong',{text:a.name}),
+      this.node('button',{'data-action':'pop','data-id':w.id,'aria-label':w.pop?'Pop in':'Pop out',text:w.pop?'↙':'↗'}),
+      this.node('button',{'data-action':'max','data-id':w.id,'aria-label':'Maximize or restore',text:w.max?'❐':'□'}),
       this.node('button',{'data-action':'close','data-id':w.id,'aria-label':'Close',text:'×'})
     ]);
     win.append(bar,this.node('article',{class:'window-body',html:this.appContent(w.app)}));
@@ -116,8 +126,7 @@ class FlorestaSystem {
     root.append(this.node('div',{class:'wallpaper'}));
     const top=this.node('header',{class:'topbar'},[
       this.node('button',{class:'brand-button','data-action':'menu','aria-label':'Floresta Web applications','aria-haspopup':'menu','aria-expanded':String(s.menuOpen),html:'🌲 Floresta Web ▾'}),
-      this.node('span',{class:'hint',text:s.mode==='desktop'?'Desktop window system':'Android-inspired '+s.mode+' system'}),
-      this.node('span',{class:'spacer'}),this.node('span',{class:'clock',id:'clock'})
+      this.node('span',{class:'spacer'})
     ]);root.append(top);
     if(s.mode==='desktop'){const menu=this.node('div',{class:'floresta-menu',id:'floresta-menu',role:'menu',hidden:s.menuOpen?null:''});if(s.menuOpen)menu.removeAttribute('hidden');menu.append(this.node('div',{class:'menu-caption',text:'Applications'}));this.apps.forEach(a=>menu.append(this.node('button',{role:'menuitem','data-open':a.id,text:a.icon+'  '+a.name})));root.append(menu);}
     if(s.mode==='desktop'){
@@ -153,16 +162,16 @@ class FlorestaSystem {
       if(target.dataset.open){this.registry.state.menuOpen=false;this.open(target.dataset.open);return;}
       const s=this.registry.state,id=Number(target.dataset.id),w=s.windows.find(w=>w.id===id);
       switch(target.dataset.action){
-        case 'menu':s.menuOpen=!s.menuOpen;this.render();break;
+        case 'menu':this.toggleMenu(!s.menuOpen);break;
         case 'home':s.active=0;this.render();break;
         case 'theme':s.theme=s.theme==='dark'?'light':'dark';this.render();break;
         case 'close':this.close(id);break;
-        case 'min':if(w){w.min=true;this.render();}break;
-        case 'max':if(w){w.max=!w.max;this.focus(id);}break;
+        case 'pop':if(w)this.togglePop(w);break;
+        case 'max':if(w)this.toggleMax(w);break;
       }
     });
     document.addEventListener('pointerdown',e=>{
-      if(this.registry.state.menuOpen&&!e.target.closest('#floresta-menu,.brand-button')){this.registry.state.menuOpen=false;this.render();return;}
+      if(this.registry.state.menuOpen&&!e.target.closest('#floresta-menu,.brand-button')){this.toggleMenu(false);}
       const bar=e.target.closest('[data-drag]');if(!bar||e.target.closest('button'))return;
       const id=Number(bar.dataset.drag),w=this.registry.state.windows.find(w=>w.id===id);
       if(!w||w.max)return;
@@ -172,7 +181,7 @@ class FlorestaSystem {
       window.addEventListener('pointermove',move);window.addEventListener('pointerup',end,{once:true});
     });
     window.setInterval(()=>this.clock(),15000);
-    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&this.registry.state.menuOpen){this.registry.state.menuOpen=false;this.render();return;}if(e.key==='Escape'&&this.registry.state.mode!=='desktop'){this.registry.state.active=0;this.render();}});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&this.registry.state.menuOpen){this.toggleMenu(false);return;}if(e.key==='Escape'&&this.registry.state.mode!=='desktop'){this.registry.state.active=0;this.render();}});
   }
 }
 
@@ -182,6 +191,10 @@ class FlorestaModule {
 }
 class FlorestaMotion extends FlorestaModule {
  constructor(system){super('Motion',system);this.reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;}
+ enter(el){this.register('enter');if(!this.reduced)el.animate([{opacity:0,transform:'scale(.93) translateY(12px)'},{opacity:1,transform:'scale(1) translateY(0)'}],{duration:280,easing:'ease-out'});}
+ leave(el,done){this.register('leave');if(this.reduced){done();return;}const animation=el.animate([{opacity:1,transform:'scale(1)'},{opacity:0,transform:'scale(.92) translateY(12px)'}],{duration:240,easing:'ease-in'});animation.onfinish=done;animation.oncancel=done;}
+ swap(el,update){this.register('swap');if(this.reduced){update();return;}const a=el.animate([{opacity:1},{opacity:0}],{duration:110});a.onfinish=()=>{update();el.animate([{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'translateY(0)'}],{duration:210,easing:'ease-out'});};}
+ pulse(el){this.register('pulse');if(!this.reduced)el.animate([{opacity:.78},{opacity:1}],{duration:250});}
  morph(root){this.register('morph');if(this.reduced)return;
   root.animate([{opacity:.7,filter:'blur(3px)'},{opacity:1,filter:'blur(0)'}],{duration:320,easing:'ease-out'});
   root.querySelectorAll('.window,.sheet,.app-launch,.desktop-icon').forEach((el,i)=>el.animate([{opacity:0,transform:'translateY(14px) scale(.96)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:320+Math.min(i,10)*35,easing:'cubic-bezier(.2,.8,.2,1)'}));
@@ -216,7 +229,7 @@ class FlorestaHardware extends FlorestaModule {
 class FlorestaMonitor extends FlorestaModule {
  constructor(system){super('Monitor',system);this.hashes=new Map();this.busy=false;}
  async check(){this.register('check');if(this.busy||document.hidden)return;this.busy=true;try{
- for(const file of ['index.js','index.R']){const u=new URL(file,location.href);u.searchParams.set('_check',Date.now());const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error(file+' HTTP '+r.status);const h=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await r.arrayBuffer())),v=>v.toString(16).padStart(2,'0')).join('');const old=this.hashes.get(file);if(old&&old!==h){location.reload();return;}this.hashes.set(file,h);}
+ for(const file of ['index.js','index.R']){const u=new URL(file,location.href);u.searchParams.set('_check',Date.now());const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error(file+' HTTP '+r.status);const h=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await r.arrayBuffer())),v=>v.toString(16).padStart(2,'0')).join('');const old=this.hashes.get(file);if(old&&old!==h){this.system.audit.record('monitor.update',{file});location.reload();return;}this.hashes.set(file,h);}
  }catch(e){this.system.audit.record('monitor.error',{message:String(e)});}finally{this.busy=false;}}
  start(){this.register('start');this.check();setInterval(()=>this.check(),5000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)this.check();});}
 }
