@@ -11,9 +11,9 @@ class FlorestaSystem {
       {id:'about',name:'About',icon:'◈',description:'Runtime and browser capabilities'}
     ];
     this.registry.apps=Object.fromEntries(this.apps.map(a=>[a.id,a]));
-    this.audit=new FlorestaAudit(this);this.runtime=new FlorestaRuntime(this);this.motion=new FlorestaMotion(this);this.hardware=new FlorestaHardware(this);this.monitor=new FlorestaMonitor(this);
+    this.audit=new FlorestaAudit(this);this.runtime=new FlorestaRuntime(this);this.ean=new FlorestaEAN(this);this.motion=new FlorestaMotion(this);this.hardware=new FlorestaHardware(this);this.monitor=new FlorestaMonitor(this);
     this.popouts=new Map();this.popoutId=new URLSearchParams(location.search).get('floresta-popout');
-    this.detect();this.style();this.render();this.events();this.runtime.start();this.audit.initialize();this.hardware.initialize();this.monitor.start();
+    this.detect();this.style();this.render();this.events();this.runtime.start();this.ean.start();this.audit.initialize();this.hardware.initialize();this.monitor.start();
     window.addEventListener('resize',()=>this.onResize());
     if(this.popoutId)this.initializePopout();
   }
@@ -50,6 +50,7 @@ class FlorestaSystem {
       .taskbar{position:absolute;bottom:0;left:0;right:0;height:65px;display:flex;justify-content:center;align-items:center;gap:10px;background:#06150fd9;border-top:1px solid #ffffff1c;backdrop-filter:blur(22px);z-index:100}
       .dock-btn{height:46px;min-width:46px;border:1px solid #ffffff20;border-radius:15px;background:#ffffff0b;font-size:24px}.dock-btn:hover,.dock-btn.selected{background:#357d52}
       .station-label{font-size:12px;font-weight:600;letter-spacing:.03em;color:var(--muted);white-space:nowrap}.runtime-info{font-size:11px;color:var(--text);display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;text-align:right}.runtime-info span{white-space:nowrap}.runtime-dot{width:7px;height:7px;border-radius:50%;background:#7ef0aa;display:inline-block}.runtime-info .runtime-muted{color:var(--muted)}@media(max-width:750px){.station-label{font-size:10px;white-space:normal}.runtime-info{font-size:10px}.runtime-info .runtime-extra{display:none}}@media(max-width:430px){.station-label{display:none}}
+      .ean-code{border:0;background:rgba(255,255,255,.08);border-radius:5px;padding:2px 4px;display:inline-flex;align-items:center;gap:4px;cursor:pointer}.ean-code svg{width:79px;height:24px;background:#fff;border-radius:2px}.ean-code:hover{background:rgba(255,255,255,.18)}.handoff-dialog{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.5);display:grid;place-items:center;padding:16px}.handoff-dialog[hidden]{display:none}.handoff-panel{width:min(440px,100%);max-height:90dvh;overflow:auto;border-radius:20px;background:rgba(17,42,32,.93);backdrop-filter:blur(24px);padding:22px;box-shadow:0 20px 70px #0009}.handoff-panel h2{margin:0 0 14px}.handoff-panel p{color:var(--muted);font-size:13px;line-height:1.5}.handoff-panel input{width:100%;padding:12px;background:#ffffff14;border:0;border-radius:10px;color:inherit}.handoff-panel button{background:#ffffff16;border:0;border-radius:10px;padding:10px 14px;margin:5px 4px 5px 0}.handoff-panel video{width:100%;max-height:180px;border-radius:10px}.handoff-panel .barcode-large svg{width:100%;height:110px;background:#fff;border-radius:8px}
       .topbar{border:0;background:rgba(7,24,17,.4)}.floresta-menu{border:0;background:rgba(16,41,31,.4);backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px)}
       .window.external-popout{display:none!important}body.popout-view .workspace{inset:0}body.popout-view .topbar,body.popout-view .floresta-menu{display:none!important}body.popout-view .window{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;border-radius:0!important}body.popout-view .window.external-popout{display:flex!important}
       .window{border:0!important;background:rgba(16,36,29,.6)!important;backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px)}.window-title{background:rgba(255,255,255,.04)!important;border:0!important;backdrop-filter:blur(25px)}.window-body{background:rgba(16,36,29,.6)}.window-title button{border:0!important;background:rgba(255,255,255,.05)!important;color:inherit}.window-title button:hover{background:rgba(255,255,255,.17)!important}.window.popped{position:fixed;inset:55px 24px 24px!important;width:auto!important;height:auto!important;z-index:90!important}
@@ -94,9 +95,9 @@ class FlorestaSystem {
     const state=this.registry.state;state.menuOpen=false;this.toggleMenu(false);
     if(state.mode!=='desktop'){state.active=id;this.render();return;}
     let w=state.windows.find(item=>item.id===state.active)||state.windows[0];
-    if(!w){w={id:state.next++,app:id,max:false,pop:false,x:Math.max(16,Math.min(220,innerWidth-380)),y:75};state.windows.push(w);state.active=w.id;
+    if(!w){w={id:state.next++,app:id,max:false,pop:false,ean:this.ean.create(id),x:Math.max(16,Math.min(220,innerWidth-380)),y:75};state.windows.push(w);state.active=w.id;
       const space=document.querySelector('.workspace');if(space){const el=this.windowNode(w);space.append(el);this.motion.enter(el);}return;}
-    w.app=id;state.active=w.id;
+    w.app=id;state.active=w.id;this.ean.publish(w);
     const el=document.querySelector('.window[data-window-id="'+w.id+'"]');
     if(w.pop){this.restorePopout(w.id);}
     if(el){const app=this.registry.apps[id];el.querySelector('.window-title strong').textContent=app.name;el.querySelector('.window-title .window-icon').textContent=app.icon;
@@ -104,10 +105,10 @@ class FlorestaSystem {
   }
   focus(id){this.registry.state.active=id;const el=document.querySelector('.window[data-window-id="'+id+'"]');if(el)el.style.zIndex='50';}
   close(id){if(this.popoutId){this.popIn();return;}this.restorePopout(id);this.audit.record('shell.close',{id});const el=document.querySelector('.window[data-window-id="'+id+'"]');
-    const done=()=>{el?.remove();this.registry.state.windows=this.registry.state.windows.filter(w=>w.id!==id);this.registry.state.active=0;};
+    const done=()=>{this.ean.unpublish(this.registry.state.windows.find(w=>w.id===id));el?.remove();this.registry.state.windows=this.registry.state.windows.filter(w=>w.id!==id);this.registry.state.active=0;};
     if(el)this.motion.leave(el,done);else done();
   }
-  newWindow(){const state=this.registry.state;if(state.mode!=='desktop')return;const offset=state.windows.length*28;const w={id:state.next++,app:'welcome',max:false,pop:false,x:Math.min(220+offset,Math.max(16,innerWidth-380)),y:75+offset};state.windows.push(w);state.active=w.id;const space=document.querySelector('.workspace');if(space){const el=this.windowNode(w);space.append(el);this.motion.enter(el);}this.audit.record('shell.newWindow',{id:w.id});}
+  newWindow(){const state=this.registry.state;if(state.mode!=='desktop')return;const offset=state.windows.length*28;const w={id:state.next++,app:'welcome',max:false,pop:false,ean:this.ean.create('welcome'),x:Math.min(220+offset,Math.max(16,innerWidth-380)),y:75+offset};state.windows.push(w);state.active=w.id;const space=document.querySelector('.workspace');if(space){const el=this.windowNode(w);space.append(el);this.motion.enter(el);}this.audit.record('shell.newWindow',{id:w.id});}
   toggleMenu(open){const state=this.registry.state;state.menuOpen=open;const menu=document.querySelector('#floresta-menu'),button=document.querySelector('.brand-button');if(menu){menu.hidden=!open;if(open)this.motion.enter(menu);}if(button)button.setAttribute('aria-expanded',String(open));}
   // Pop-out moves a window into a separate browser window; it never maximizes the panel.
   togglePop(w){
@@ -141,10 +142,11 @@ class FlorestaSystem {
   popIn(){const id=Number(this.popoutId);if(window.opener&&!window.opener.closed){window.opener.postMessage({type:'floresta-popin',id},location.origin);window.close();}else window.close();}
   toggleMax(w){w.max=!w.max;const el=document.querySelector('.window[data-window-id="'+w.id+'"]');if(el){el.classList.toggle('maximized',w.max);el.querySelector('[data-action=max]').textContent=w.max?'❐':'□';this.motion.pulse(el);}}
   windowNode(w){
+    w.ean??=this.ean.create(w.app);this.ean.publish(w);
     const a=this.registry.apps[w.app],active=this.registry.state.active===w.id;
     const win=this.node('section',{ 'data-window-id':String(w.id),class:'window'+(w.max?' maximized':'')+(w.pop?' popped':''),style:{left:w.x+'px',top:w.y+'px',zIndex:active?'50':String(10+w.id)}});
     const bar=this.node('header',{class:'window-title','data-drag':String(w.id)},[
-      this.node('span',{class:'window-icon',text:a.icon}),this.node('strong',{text:a.name}),
+      this.node('button',{class:'ean-code','data-action':'show-ean','data-id':w.id,'aria-label':'Show window EAN '+w.ean},[this.ean.barcode(w.ean)]),this.node('span',{class:'window-icon',text:a.icon}),this.node('strong',{text:a.name}),
       this.node('button',{'data-action':'pop','data-id':w.id,'aria-label':this.popoutId?'Pop in':w.pop?'Pop in':'Pop out',text:this.popoutId?'↙':w.pop?'↙':'↗'}),
       this.node('button',{'data-action':'max','data-id':w.id,'aria-label':'Maximize or restore',text:w.max?'❐':'□'}),
       this.node('button',{'data-action':'close','data-id':w.id,'aria-label':'Close',text:'×'})
@@ -176,7 +178,7 @@ class FlorestaSystem {
       home.append(this.node('button',{class:'search','data-open':'files',text:'⌕  Search apps and files'}));
       const grid=this.node('div',{class:'app-grid'});
       this.apps.forEach(a=>grid.append(this.node('button',{class:'app-launch','data-open':a.id},[this.node('span',{class:'app-symbol',text:a.icon}),this.node('span',{text:a.name})])));
-      home.append(grid);root.append(home);
+      home.append(grid);home.append(this.node('button',{class:'action','data-action':'scan-ean',text:'▥  Scan window EAN'}));root.append(home);
       if(s.active&&typeof s.active==='string'){
         const a=this.registry.apps[s.active];
         root.append(this.node('section',{class:'sheet'},[
@@ -186,7 +188,7 @@ class FlorestaSystem {
       }
       root.append(this.node('nav',{class:'android-nav'},[this.node('button',{'data-action':'home','aria-label':'Go home'})]));
     }
-    document.body.append(root);if(this.popoutId)document.body.classList.add('popout-view');this.clock();this.runtime.render();this.motion.morph(root);this.audit.record("shell.render",{mode:s.mode});
+    root.append(this.ean.dialog());document.body.append(root);if(this.popoutId)document.body.classList.add('popout-view');this.clock();this.runtime.render();this.motion.morph(root);this.audit.record("shell.render",{mode:s.mode});
   }
   clock(){
     const now=new Date();
@@ -203,6 +205,11 @@ class FlorestaSystem {
       switch(target.dataset.action){
         case 'menu':this.toggleMenu(!s.menuOpen);break;
         case 'new-window':this.toggleMenu(false);this.newWindow();break;
+        case 'show-ean':if(w)this.ean.show(w);break;
+        case 'scan-ean':this.ean.showScanner();break;
+        case 'ean-close':this.ean.hide();break;
+        case 'ean-submit':this.ean.resolveInput();break;
+        case 'ean-camera':this.ean.camera();break;
         case 'home':s.active=0;this.render();break;
         case 'theme':s.theme=s.theme==='dark'?'light':'dark';this.render();break;
         case 'close':this.close(id);break;
@@ -292,5 +299,25 @@ class FlorestaRuntime extends FlorestaModule {
   for(const [value,cls] of parts){const span=document.createElement('span');span.className=cls;span.textContent=value;el.append(span);}
   el.title='Local browser runtime • '+s.browser+' • '+s.os+' • '+s.mode+' • '+s.screen+' • '+s.connection+' • Language: '+s.language+' • Time zone: '+s.zone+' • Touch: '+s.touch+' • CPU threads: '+(s.cores??'unknown')+' • Memory: '+(s.memory??'unknown')+' GiB (approx.)';
  }
+}
+
+class FlorestaEAN extends FlorestaModule {
+ constructor(system){super('EAN',system);this.pool=new Map();this.channel=null;this.stream=null;this.scanTimer=null;this.selected=null;this.active=false;this.L=['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];this.G=['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111','0010001'];this.R=this.L.map(x=>[...x].map(v=>v==='0'?'1':'0').join(''));this.parity=['LLLLLL','LLGLGG','LLGGLG','LLGGGL','LGLLGG','LGGLLG','LGGGLL','LGLGLG','LGLGGL','LGGLGL'];}
+ start(){this.register('start');if('BroadcastChannel' in window){this.channel=new BroadcastChannel('floresta-ean-v1');this.channel.onmessage=e=>this.receive(e.data);}this.active=true;}
+ create(app){this.register('create');const b=new Uint32Array(3);crypto.getRandomValues(b);let base='29'+Array.from(b,v=>String(v%10000).padStart(4,'0')).join('').slice(0,10);const sum=[...base].reduce((acc,d,i)=>acc+Number(d)*(i%2?3:1),0);return base+((10-sum%10)%10);}
+ valid(code){if(!/^\d{13}$/.test(code))return false;const sum=[...code.slice(0,12)].reduce((acc,d,i)=>acc+Number(d)*(i%2?3:1),0);return Number(code[12])===(10-sum%10)%10;}
+ barcode(code){const bits='101'+[...code.slice(1,7)].map((d,i)=>(this.parity[Number(code[0])][i]==='L'?this.L:this.G)[Number(d)]).join('')+'01010'+[...code.slice(7)].map(d=>this.R[Number(d)]).join('')+'101';const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 113 43');svg.setAttribute('role','img');svg.setAttribute('aria-label','EAN-13 '+code);const bg=document.createElementNS(svg.namespaceURI,'rect');bg.setAttribute('width','113');bg.setAttribute('height','43');bg.setAttribute('fill','white');svg.append(bg);for(let i=0;i<bits.length;i++)if(bits[i]==='1'){const r=document.createElementNS(svg.namespaceURI,'rect');r.setAttribute('x',String(i+9));r.setAttribute('y','2');r.setAttribute('width','1');r.setAttribute('height','30');r.setAttribute('fill','#111');svg.append(r);}const t=document.createElementNS(svg.namespaceURI,'text');t.setAttribute('x','56');t.setAttribute('y','40');t.setAttribute('text-anchor','middle');t.setAttribute('font-size','7');t.setAttribute('fill','#111');t.textContent=code;svg.append(t);return svg;}
+ publish(w){if(!w?.ean)return;this.pool.set(w.ean,{app:w.app,updated:Date.now()});this.channel?.postMessage({type:'advertise',code:w.ean,app:w.app});}
+ unpublish(w){if(w?.ean)this.pool.delete(w.ean);}
+ receive(msg){if(!msg||!this.valid(msg.code))return;if(msg.type==='advertise'&&this.system.registry.apps[msg.app])this.pool.set(msg.code,{app:msg.app,updated:Date.now()});if(msg.type==='request'){const entry=this.pool.get(msg.code);if(entry)this.channel?.postMessage({type:'transfer',code:msg.code,app:entry.app});}if(msg.type==='transfer'&&msg.code===this.selected&&this.system.registry.apps[msg.app])this.accept(msg.app);}
+ dialog(){const outer=this.system.node('div',{class:'handoff-dialog',id:'ean-dialog',hidden:''});const panel=this.system.node('section',{class:'handoff-panel',role:'dialog','aria-modal':'true','aria-label':'Window transfer'});panel.append(this.system.node('h2',{text:'Window handoff'}),this.system.node('div',{id:'ean-preview',class:'barcode-large'}),this.system.node('p',{id:'ean-description',text:'Scan an EAN-13 window code or enter its 13 digits.'}),this.system.node('input',{id:'ean-input',inputmode:'numeric',maxlength:'13',placeholder:'13-digit EAN'}),this.system.node('div',{},[this.system.node('button',{'data-action':'ean-submit',text:'Open dialog'}),this.system.node('button',{'data-action':'ean-camera',text:'Scan camera'}),this.system.node('button',{'data-action':'ean-close',text:'Close'})]),this.system.node('video',{id:'ean-video',playsinline:'',muted:'',hidden:''}),this.system.node('p',{id:'ean-status',text:'Same-origin browser tabs can exchange window IDs locally. Cross-device transfer requires a paired relay service.'}));outer.append(panel);return outer;}
+ show(w){this.register('show');this.selected=w.ean;this.reveal();const preview=document.querySelector('#ean-preview');preview.replaceChildren(this.barcode(w.ean));document.querySelector('#ean-input').value=w.ean;document.querySelector('#ean-description').textContent='EAN-13 for '+this.system.registry.apps[w.app].name+'. Scan it from another device to request this window.';}
+ showScanner(){this.register('showScanner');this.selected=null;this.reveal();document.querySelector('#ean-preview').replaceChildren();document.querySelector('#ean-input').value='';document.querySelector('#ean-description').textContent='Scan a window EAN or type its 13 digits to request a mobile/tablet dialog.';}
+ reveal(){document.querySelector('#ean-dialog').hidden=false;}
+ hide(){this.stopCamera();const el=document.querySelector('#ean-dialog');if(el)el.hidden=true;}
+ resolveInput(){const code=document.querySelector('#ean-input').value.trim();const status=document.querySelector('#ean-status');if(!this.valid(code)){status.textContent='Invalid EAN-13 checksum or length.';return;}this.selected=code;const entry=this.pool.get(code);if(entry){this.accept(entry.app);return;}this.channel?.postMessage({type:'request',code});status.textContent='EAN valid. Looking for a matching window in this browser profile. Other devices need a connected relay.';}
+ accept(app){this.stopCamera();this.hide();this.system.open(app);this.system.audit.record('ean.handoff',{app});}
+ async camera(){const status=document.querySelector('#ean-status');if(!('BarcodeDetector' in window)){status.textContent='BarcodeDetector is unavailable here. Enter the EAN manually.';return;}try{const detector=new BarcodeDetector({formats:['ean_13']});this.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const video=document.querySelector('#ean-video');video.hidden=false;video.srcObject=this.stream;await video.play();const scan=async()=>{if(!this.stream)return;try{const found=await detector.detect(video);const code=found.find(item=>item.format==='ean_13')?.rawValue;if(code&&this.valid(code)){document.querySelector('#ean-input').value=code;this.stopCamera();this.resolveInput();return;}}catch(e){status.textContent=String(e);}this.scanTimer=setTimeout(scan,300);};scan();}catch(e){status.textContent='Camera unavailable: '+String(e);this.stopCamera();}}
+ stopCamera(){clearTimeout(this.scanTimer);this.scanTimer=null;this.stream?.getTracks().forEach(track=>track.stop());this.stream=null;const video=document.querySelector('#ean-video');if(video){video.pause();video.srcObject=null;video.hidden=true;}}
 }
 new FlorestaSystem();
