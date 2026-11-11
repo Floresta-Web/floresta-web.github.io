@@ -88,8 +88,8 @@ class FlorestaSystem {
   open(id){this.audit.record('shell.open',{id});if(!this.registry.apps[id])return;
     const state=this.registry.state;state.menuOpen=false;this.toggleMenu(false);
     if(state.mode!=='desktop'){state.active=id;this.render();return;}
-    let w=state.windows[0];
-    if(!w){w={id:state.next++,app:id,max:false,pop:false,x:Math.max(16,Math.min(220,innerWidth-380)),y:75};state.windows=[w];state.active=w.id;
+    let w=state.windows.find(item=>item.id===state.active)||state.windows[0];
+    if(!w){w={id:state.next++,app:id,max:false,pop:false,x:Math.max(16,Math.min(220,innerWidth-380)),y:75};state.windows.push(w);state.active=w.id;
       const space=document.querySelector('.workspace');if(space){const el=this.windowNode(w);space.append(el);this.motion.enter(el);}return;}
     w.app=id;state.active=w.id;
     const el=document.querySelector('.window[data-window-id="'+w.id+'"]');
@@ -101,6 +101,7 @@ class FlorestaSystem {
     const done=()=>{el?.remove();this.registry.state.windows=this.registry.state.windows.filter(w=>w.id!==id);this.registry.state.active=0;};
     if(el)this.motion.leave(el,done);else done();
   }
+  newWindow(){const state=this.registry.state;if(state.mode!=='desktop')return;const offset=state.windows.length*28;const w={id:state.next++,app:'welcome',max:false,pop:false,x:Math.min(220+offset,Math.max(16,innerWidth-380)),y:75+offset};state.windows.push(w);state.active=w.id;const space=document.querySelector('.workspace');if(space){const el=this.windowNode(w);space.append(el);this.motion.enter(el);}this.audit.record('shell.newWindow',{id:w.id});}
   toggleMenu(open){const state=this.registry.state;state.menuOpen=open;const menu=document.querySelector('#floresta-menu'),button=document.querySelector('.brand-button');if(menu){menu.hidden=!open;if(open)this.motion.enter(menu);}if(button)button.setAttribute('aria-expanded',String(open));}
   togglePop(w){w.pop=!w.pop;const el=document.querySelector('.window[data-window-id="'+w.id+'"]');if(el){el.classList.toggle('popped',w.pop);el.querySelector('[data-action=pop]').textContent=w.pop?'↙':'↗';el.querySelector('[data-action=pop]').setAttribute('aria-label',w.pop?'Pop in':'Pop out');this.motion.pulse(el);}}
   toggleMax(w){w.max=!w.max;const el=document.querySelector('.window[data-window-id="'+w.id+'"]');if(el){el.classList.toggle('maximized',w.max);el.querySelector('[data-action=max]').textContent=w.max?'❐':'□';this.motion.pulse(el);}}
@@ -128,7 +129,7 @@ class FlorestaSystem {
       this.node('button',{class:'brand-button','data-action':'menu','aria-label':'Floresta Web applications','aria-haspopup':'menu','aria-expanded':String(s.menuOpen),html:'🌲 Floresta Web ▾'}),
       this.node('span',{class:'spacer'})
     ]);root.append(top);
-    if(s.mode==='desktop'){const menu=this.node('div',{class:'floresta-menu',id:'floresta-menu',role:'menu',hidden:s.menuOpen?null:''});if(s.menuOpen)menu.removeAttribute('hidden');menu.append(this.node('div',{class:'menu-caption',text:'Applications'}));this.apps.forEach(a=>menu.append(this.node('button',{role:'menuitem','data-open':a.id,text:a.icon+'  '+a.name})));root.append(menu);}
+    if(s.mode==='desktop'){const menu=this.node('div',{class:'floresta-menu',id:'floresta-menu',role:'menu',hidden:s.menuOpen?null:''});if(s.menuOpen)menu.removeAttribute('hidden');menu.append(this.node('div',{class:'menu-caption',text:'Applications'}));menu.append(this.node('button',{'data-action':'new-window',role:'menuitem',text:'＋  New window'}));this.apps.forEach(a=>menu.append(this.node('button',{role:'menuitem','data-open':a.id,text:a.icon+'  '+a.name})));root.append(menu);}
     if(s.mode==='desktop'){
       const space=this.node('div',{class:'workspace'});
       s.windows.forEach(w=>space.append(this.windowNode(w)));root.append(space);
@@ -163,6 +164,7 @@ class FlorestaSystem {
       const s=this.registry.state,id=Number(target.dataset.id),w=s.windows.find(w=>w.id===id);
       switch(target.dataset.action){
         case 'menu':this.toggleMenu(!s.menuOpen);break;
+        case 'new-window':this.toggleMenu(false);this.newWindow();break;
         case 'home':s.active=0;this.render();break;
         case 'theme':s.theme=s.theme==='dark'?'light':'dark';this.render();break;
         case 'close':this.close(id);break;
