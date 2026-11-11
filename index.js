@@ -279,9 +279,10 @@ class FlorestaHardware extends FlorestaModule {
 class FlorestaMonitor extends FlorestaModule {
  constructor(system){super('Monitor',system);this.hashes=new Map();this.busy=false;}
  async check(){this.register('check');if(this.busy||document.hidden)return;this.busy=true;try{
- for(const file of ['index.js','index.R']){const u=new URL(file,location.href);u.searchParams.set('_check',Date.now());const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error(file+' HTTP '+r.status);const h=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await r.arrayBuffer())),v=>v.toString(16).padStart(2,'0')).join('');const old=this.hashes.get(file);if(old&&old!==h){this.system.audit.record('monitor.update',{file});location.reload();return;}this.hashes.set(file,h);}
+ for(const file of ['index.js','index.R']){const u=new URL(file,location.href);u.searchParams.set('_check',Date.now());const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw Error(file+' HTTP '+r.status);const h=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await r.arrayBuffer())),v=>v.toString(16).padStart(2,'0')).join('');const old=this.hashes.get(file);if(old&&old!==h){this.system.audit.record('monitor.updateAvailable',{file});this.pendingUpdates??=new Set();this.pendingUpdates.add(file);this.notify();}this.hashes.set(file,h);}
  }catch(e){this.system.audit.record('monitor.error',{message:String(e)});}finally{this.busy=false;}}
- start(){this.register('start');this.check();setInterval(()=>this.check(),5000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)this.check();});}
+ notify(){const banner=document.querySelector('#runtime-info');if(!banner)return;banner.title='Update available ('+[...this.pendingUpdates].join(', ')+'). Current session preserved; refresh manually when ready.';banner.dataset.updateAvailable='true';}
+ start(){this.register('start');this.check();setInterval(()=>this.check(),60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)this.check();});}
 }
 
 class FlorestaRuntime extends FlorestaModule {
