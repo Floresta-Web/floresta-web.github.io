@@ -12,8 +12,10 @@ class FlorestaSystem {
     ];
     this.registry.apps=Object.fromEntries(this.apps.map(a=>[a.id,a]));
     this.audit=new FlorestaAudit(this);this.runtime=new FlorestaRuntime(this);this.motion=new FlorestaMotion(this);this.hardware=new FlorestaHardware(this);this.monitor=new FlorestaMonitor(this);
+    this.popouts=new Map();this.popoutId=new URLSearchParams(location.search).get('floresta-popout');
     this.detect();this.style();this.render();this.events();this.runtime.start();this.audit.initialize();this.hardware.initialize();this.monitor.start();
     window.addEventListener('resize',()=>this.onResize());
+    if(this.popoutId)this.initializePopout();
   }
   detect() {
     const ua=navigator.userAgent, touch=navigator.maxTouchPoints>0;
@@ -49,6 +51,7 @@ class FlorestaSystem {
       .dock-btn{height:46px;min-width:46px;border:1px solid #ffffff20;border-radius:15px;background:#ffffff0b;font-size:24px}.dock-btn:hover,.dock-btn.selected{background:#357d52}
       .station-label{font-size:12px;font-weight:600;letter-spacing:.03em;color:var(--muted);white-space:nowrap}.runtime-info{font-size:11px;color:var(--text);display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;text-align:right}.runtime-info span{white-space:nowrap}.runtime-dot{width:7px;height:7px;border-radius:50%;background:#7ef0aa;display:inline-block}.runtime-info .runtime-muted{color:var(--muted)}@media(max-width:750px){.station-label{font-size:10px;white-space:normal}.runtime-info{font-size:10px}.runtime-info .runtime-extra{display:none}}@media(max-width:430px){.station-label{display:none}}
       .topbar{border:0;background:rgba(7,24,17,.4)}.floresta-menu{border:0;background:rgba(16,41,31,.4);backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px)}
+      .window.external-popout{display:none!important}body.popout-view .workspace{inset:0}body.popout-view .topbar,body.popout-view .floresta-menu{display:none!important}body.popout-view .window{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;border-radius:0!important}body.popout-view .window.external-popout{display:flex!important}
       .window{border:0!important;background:rgba(16,36,29,.6)!important;backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px)}.window-title{background:rgba(255,255,255,.04)!important;border:0!important;backdrop-filter:blur(25px)}.window-body{background:rgba(16,36,29,.6)}.window-title button{border:0!important;background:rgba(255,255,255,.05)!important;color:inherit}.window-title button:hover{background:rgba(255,255,255,.17)!important}.window.popped{position:fixed;inset:55px 24px 24px!important;width:auto!important;height:auto!important;z-index:90!important}
       .window{position:absolute;top:10%;left:18%;width:min(690px,75vw);height:min(500px,75vh);min-width:300px;min-height:230px;border:1px solid #729c8050;border-radius:17px;background:#10241deF;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;backdrop-filter:blur(30px)}
       .window.maximized{inset:8px!important;width:auto!important;height:auto!important}.window.minimized{display:none}
@@ -95,24 +98,54 @@ class FlorestaSystem {
       const space=document.querySelector('.workspace');if(space){const el=this.windowNode(w);space.append(el);this.motion.enter(el);}return;}
     w.app=id;state.active=w.id;
     const el=document.querySelector('.window[data-window-id="'+w.id+'"]');
+    if(w.pop){this.restorePopout(w.id);}
     if(el){const app=this.registry.apps[id];el.querySelector('.window-title strong').textContent=app.name;el.querySelector('.window-title .window-icon').textContent=app.icon;
       const body=el.querySelector('.window-body');this.motion.swap(body,()=>{body.innerHTML=this.appContent(id);});}
   }
   focus(id){this.registry.state.active=id;const el=document.querySelector('.window[data-window-id="'+id+'"]');if(el)el.style.zIndex='50';}
-  close(id){this.audit.record('shell.close',{id});const el=document.querySelector('.window[data-window-id="'+id+'"]');
+  close(id){if(this.popoutId){this.popIn();return;}this.restorePopout(id);this.audit.record('shell.close',{id});const el=document.querySelector('.window[data-window-id="'+id+'"]');
     const done=()=>{el?.remove();this.registry.state.windows=this.registry.state.windows.filter(w=>w.id!==id);this.registry.state.active=0;};
     if(el)this.motion.leave(el,done);else done();
   }
   newWindow(){const state=this.registry.state;if(state.mode!=='desktop')return;const offset=state.windows.length*28;const w={id:state.next++,app:'welcome',max:false,pop:false,x:Math.min(220+offset,Math.max(16,innerWidth-380)),y:75+offset};state.windows.push(w);state.active=w.id;const space=document.querySelector('.workspace');if(space){const el=this.windowNode(w);space.append(el);this.motion.enter(el);}this.audit.record('shell.newWindow',{id:w.id});}
   toggleMenu(open){const state=this.registry.state;state.menuOpen=open;const menu=document.querySelector('#floresta-menu'),button=document.querySelector('.brand-button');if(menu){menu.hidden=!open;if(open)this.motion.enter(menu);}if(button)button.setAttribute('aria-expanded',String(open));}
-  togglePop(w){w.pop=!w.pop;const el=document.querySelector('.window[data-window-id="'+w.id+'"]');if(el){el.classList.toggle('popped',w.pop);el.querySelector('[data-action=pop]').textContent=w.pop?'↙':'↗';el.querySelector('[data-action=pop]').setAttribute('aria-label',w.pop?'Pop in':'Pop out');this.motion.pulse(el);}}
+  // Pop-out moves a window into a separate browser window; it never maximizes the panel.
+  togglePop(w){
+    this.audit.record('shell.popToggle',{id:w.id});
+    if(this.popoutId){this.popIn();return;}
+    if(w.pop){this.restorePopout(w.id);return;}
+    const url=new URL(location.href);url.searchParams.set('floresta-popout',String(w.id));url.searchParams.set('app',w.app);
+    const popup=window.open(url.href,'floresta-window-'+w.id,'popup=yes,width=780,height=560,resizable=yes,scrollbars=yes');
+    if(!popup){this.audit.record('shell.popBlocked',{id:w.id});return;}
+    w.pop=true;this.popouts.set(w.id,popup);
+    const el=document.querySelector('.window[data-window-id="'+w.id+'"]');
+    if(el)el.classList.add('external-popout');
+    this.updatePopButton(w);
+    const watcher=setInterval(()=>{if(popup.closed){clearInterval(watcher);this.restorePopout(w.id,false);}},700);
+    this.popoutWatchers??=new Map();this.popoutWatchers.set(w.id,watcher);
+  }
+  updatePopButton(w){const el=document.querySelector('.window[data-window-id="'+w.id+'"]');const button=el?.querySelector('[data-action=pop]');if(button){button.textContent=w.pop?'↙':'↗';button.setAttribute('aria-label',w.pop?'Pop in':'Pop out');}}
+  restorePopout(id,close=true){const w=this.registry.state.windows.find(item=>item.id===id);if(!w)return;
+    const popup=this.popouts.get(id);if(close&&popup&&!popup.closed)popup.close();
+    this.popouts.delete(id);clearInterval(this.popoutWatchers?.get(id));this.popoutWatchers?.delete(id);
+    w.pop=false;const el=document.querySelector('.window[data-window-id="'+id+'"]');el?.classList.remove('external-popout');this.updatePopButton(w);
+    if(el)this.motion.enter(el);this.audit.record('shell.popIn',{id});
+  }
+  initializePopout(){const app=new URLSearchParams(location.search).get('app');const id=Number(this.popoutId);
+    if(!this.registry.apps[app]||!Number.isSafeInteger(id))return;
+    this.registry.state.mode='desktop';this.registry.state.windows=[{id,app,max:false,pop:true,x:0,y:0}];this.registry.state.active=id;
+    this.render();document.body.classList.add('popout-view');
+    window.addEventListener('pagehide',()=>{try{window.opener?.postMessage({type:'floresta-popin',id},location.origin);}catch(_){}});
+    window.addEventListener('message',event=>{if(event.origin===location.origin&&event.data?.type==='floresta-close-popout'&&event.data.id===id)window.close();});
+  }
+  popIn(){const id=Number(this.popoutId);if(window.opener&&!window.opener.closed){window.opener.postMessage({type:'floresta-popin',id},location.origin);window.close();}else window.close();}
   toggleMax(w){w.max=!w.max;const el=document.querySelector('.window[data-window-id="'+w.id+'"]');if(el){el.classList.toggle('maximized',w.max);el.querySelector('[data-action=max]').textContent=w.max?'❐':'□';this.motion.pulse(el);}}
   windowNode(w){
     const a=this.registry.apps[w.app],active=this.registry.state.active===w.id;
     const win=this.node('section',{ 'data-window-id':String(w.id),class:'window'+(w.max?' maximized':'')+(w.pop?' popped':''),style:{left:w.x+'px',top:w.y+'px',zIndex:active?'50':String(10+w.id)}});
     const bar=this.node('header',{class:'window-title','data-drag':String(w.id)},[
       this.node('span',{class:'window-icon',text:a.icon}),this.node('strong',{text:a.name}),
-      this.node('button',{'data-action':'pop','data-id':w.id,'aria-label':w.pop?'Pop in':'Pop out',text:w.pop?'↙':'↗'}),
+      this.node('button',{'data-action':'pop','data-id':w.id,'aria-label':this.popoutId?'Pop in':w.pop?'Pop in':'Pop out',text:this.popoutId?'↙':w.pop?'↙':'↗'}),
       this.node('button',{'data-action':'max','data-id':w.id,'aria-label':'Maximize or restore',text:w.max?'❐':'□'}),
       this.node('button',{'data-action':'close','data-id':w.id,'aria-label':'Close',text:'×'})
     ]);
@@ -153,7 +186,7 @@ class FlorestaSystem {
       }
       root.append(this.node('nav',{class:'android-nav'},[this.node('button',{'data-action':'home','aria-label':'Go home'})]));
     }
-    document.body.append(root);this.clock();this.runtime.render();this.motion.morph(root);this.audit.record("shell.render",{mode:s.mode});
+    document.body.append(root);if(this.popoutId)document.body.classList.add('popout-view');this.clock();this.runtime.render();this.motion.morph(root);this.audit.record("shell.render",{mode:s.mode});
   }
   clock(){
     const now=new Date();
@@ -162,6 +195,7 @@ class FlorestaSystem {
     const d=document.querySelector('#date');if(d)d.textContent=now.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'});
   }
   events(){
+    window.addEventListener('message',event=>{if(event.origin===location.origin&&event.data?.type==='floresta-popin')this.restorePopout(event.data.id,false);});
     document.addEventListener('click',e=>{
       const target=e.target.closest('[data-open],[data-action]');if(!target)return;
       if(target.dataset.open){this.registry.state.menuOpen=false;this.open(target.dataset.open);return;}
