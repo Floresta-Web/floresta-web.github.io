@@ -8,13 +8,14 @@ class FlorestaSystem {
       {id:'files',name:'Files',icon:'📁',description:'Local workspace overview'},
       {id:'terminal',name:'Terminal',icon:'⌘',description:'Read-only demonstration console'},
       {id:'settings',name:'Settings',icon:'⚙',description:'Display and environment preferences'},
+      {id:'markets',name:'Market Tree',icon:'📈',description:'Stocks, currencies and bonds statistics hierarchy'},
       {id:'telegram',name:'Telegram',icon:'✈',description:'Telegram integration and secure configuration'},
       {id:'about',name:'About',icon:'◈',description:'Runtime and browser capabilities'}
     ];
     this.registry.apps=Object.fromEntries(this.apps.map(a=>[a.id,a]));
     this.audit=new FlorestaAudit(this);this.runtime=new FlorestaRuntime(this);this.ean=new FlorestaEAN(this);this.motion=new FlorestaMotion(this);this.hardware=new FlorestaHardware(this);this.monitor=new FlorestaMonitor(this);
-    this.popouts=new Map();this.popoutId=new URLSearchParams(location.search).get('floresta-popout');
-    this.detect();this.style();this.render();this.events();this.runtime.start();this.ean.start();this.ean.openFromURL();this.audit.initialize();this.hardware.initialize();this.monitor.start();
+    this.market=new FlorestaMarketTree(this);this.popouts=new Map();this.popoutId=new URLSearchParams(location.search).get('floresta-popout');
+    this.detect();this.style();this.render();this.events();this.runtime.start();this.ean.start();this.ean.openFromURL();this.audit.initialize();this.hardware.initialize();this.monitor.start();this.market.start();
     window.addEventListener('resize',()=>this.onResize());
     if(this.popoutId)this.initializePopout();
   }
@@ -36,6 +37,8 @@ class FlorestaSystem {
   style(){
     const el=document.createElement('style');
     el.textContent=`
+      .market-head{display:flex;justify-content:space-between;gap:15px;align-items:start;flex-wrap:wrap}.market-tree{margin-top:18px}.market-tree details{border-left:2px solid #68bb8155;margin:9px 0 9px 10px;padding:4px 0 4px 13px}.market-tree summary{cursor:pointer;padding:10px;border-radius:10px;background:#ffffff0b;font-weight:650}.market-tree summary small{font-weight:400;color:var(--muted);margin-left:8px}.market-leaves{margin:9px 0}.market-leaf{display:flex;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid #ffffff15;font-size:13px}.market-leaf strong{font-variant-numeric:tabular-nums}.market-note{font-size:12px!important;color:var(--muted);line-height:1.5}
+
       @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap');
       :root{font-family:'Quicksand',system-ui,-apple-system,sans-serif;color-scheme:dark;--bg:#071711;--panel:#12251e;--panel2:#1a3329;--line:#335647;--text:#e9f7ee;--muted:#a5c3b1;--accent:#8de6a7;--shadow:0 24px 80px #0008}
       *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);overflow:hidden}button,input{font:inherit}button{cursor:pointer;color:inherit}button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -88,6 +91,7 @@ class FlorestaSystem {
     if(id==='welcome')return '<span class="pill">● Runtime ready</span><h1>Welcome to Floresta Web</h1><p>A browser-based environment with three adaptive operating systems: desktop windows, Android-inspired tablet and mobile.</p><div class="tiles"><div class="tile"><b>Desktop</b><span>Movable, maximizable windows and taskbar</span></div><div class="tile"><b>Tablet</b><span>Touch-first launcher and large application sheets</span></div><div class="tile"><b>Mobile</b><span>Compact launcher and gesture-style navigation</span></div></div>';
     if(id==='files')return '<h1>Files</h1><p>This is a frontend workspace shell. Browser file access will require explicit user selection and permission.</p><div class="tiles"><div class="tile"><b>📂 Workspace</b><span>No files loaded</span></div><div class="tile"><b>📦 Packages</b><span>Not connected</span></div></div>';
     if(id==='terminal')return '<h1>Terminal</h1><p>Demonstration console — no operating system commands are executed.</p><div class="terminal">floresta@web:~$ system info\nPlatform: '+s.platform+'\nBrowser: '+s.browser+'\nDisplay: '+s.mode+'\nJavaScript: active\nfloresta@web:~$ _</div>';
+    if(id==='markets')return this.market.content();
     if(id==='telegram')return '<h1>Telegram integration</h1><p>GitHub Actions holds the bot token and Telegram identifiers. Secrets are never delivered to this public page.</p><div class="tiles"><div class="tile"><b>Bot verification</b><span>Run the protected GitHub Actions verification workflow to test the Telegram API connection.</span></div><div class="tile"><b>Group verification</b><span>Requires TELEGRAM_GROUP_CHAT_ID in repository secrets. Group ID has not yet been confirmed.</span></div><div class="tile"><b>Live control</b><span>Not connected. Interactive topic management needs an authenticated backend, not a public Pages secret.</span></div></div><p><a href="https://github.com/Floresta-Web/floresta-web.github.io/actions/workflows/telegram-verify.yml" target="_blank" rel="noopener noreferrer" style="color:var(--accent)">Open Telegram verification workflow</a></p>';
     if(id==='settings')return '<h1>Settings</h1><p>Appearance and display profile</p><button class="action" data-action="theme">Toggle light / dark theme</button><div class="tiles"><div class="tile"><b>Automatic display</b><span>'+s.mode+'</span></div><div class="tile"><b>Touch support</b><span>'+(s.touch?'Available':'Not detected')+'</span></div></div>';
     return '<h1>About Floresta Web</h1><p>JavaScript-generated user interface on GitHub Pages.</p><div class="tiles"><div class="tile"><b>Browser</b><span>'+s.browser+'</span></div><div class="tile"><b>Platform</b><span>'+s.platform+'</span></div><div class="tile"><b>WebAssembly</b><span>'+(typeof WebAssembly!=='undefined'?'Supported':'Unavailable')+'</span></div><div class="tile"><b>WebGPU</b><span>'+(navigator.gpu?'Available':'Unavailable')+'</span></div></div>';
@@ -202,6 +206,7 @@ class FlorestaSystem {
     window.addEventListener('message',event=>{if(event.origin===location.origin&&event.data?.type==='floresta-popin')this.restorePopout(event.data.id,false);});
     document.addEventListener('click',e=>{
       const target=e.target.closest('[data-open],[data-action]');if(!target)return;
+      if(target.dataset.action==='market-refresh'){this.market.refresh();return;}
       if(target.dataset.open){this.registry.state.menuOpen=false;this.open(target.dataset.open);return;}
       const s=this.registry.state,id=Number(target.dataset.id),w=s.windows.find(w=>w.id===id);
       switch(target.dataset.action){
@@ -336,3 +341,34 @@ class FlorestaEAN extends FlorestaModule {
  stopCamera(){clearTimeout(this.scanTimer);this.scanTimer=null;this.stream?.getTracks().forEach(track=>track.stop());this.stream=null;const video=document.querySelector('#ean-video');if(video){video.pause();video.srcObject=null;video.hidden=true;}}
 }
 new FlorestaSystem();
+
+class FlorestaMarketTree {
+  constructor(shell){this.shell=shell;this.registry={functions:{},feeds:{},state:{updated:null,loading:false,fx:null,error:null}};this.currencies=['EUR','GBP','JPY','CHF','INR','CAD','AUD'];}
+  start(){this.refresh();window.setInterval(()=>this.refresh(),300000);}
+  async refresh(){
+    const st=this.registry.state;if(st.loading)return;st.loading=true;this.paint();
+    try{
+      const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);
+      let response;
+      try{response=await fetch('https://open.er-api.com/v6/latest/USD',{signal:controller.signal,cache:'no-store'});}finally{clearTimeout(timeout);}
+      if(!response.ok)throw Error('FX feed HTTP '+response.status);
+      const data=await response.json();if(data.result!=='success'||!data.rates)throw Error('Invalid FX response');
+      st.fx=data;st.updated=new Date();st.error=null;
+    }catch(e){st.error=e.message;}finally{st.loading=false;this.paint();}
+  }
+  escape(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  content(){
+    const st=this.registry.state,fx=st.fx;
+    const rows=fx?this.currencies.map(code=>'<div class="market-leaf"><span>USD / '+code+'</span><strong>'+Number(fx.rates[code]).toLocaleString(undefined,{maximumFractionDigits:5})+'</strong></div>').join(''):'<p>Waiting for exchange-rate feed.</p>';
+    const published=fx?.time_last_update_utc||'Not available';
+    return '<div class="market-head"><div><span class="pill">MARKET STATISTICS TREE</span><h1>Global Markets</h1><p>Stocks · Foreign exchange · Sovereign bonds</p></div><button class="action" data-action="market-refresh">↻ Refresh</button></div>'+
+      '<div class="market-tree">'+
+      '<details open><summary>🌍 Global Markets <small>3 branches</small></summary><div class="market-branches">'+
+      '<details open><summary>💱 Currencies / FX <small>USD base · published reference rates</small></summary><div class="market-leaves">'+rows+'</div><p class="market-note">Provider: ExchangeRate-API open endpoint. Last published: '+this.escape(published)+'. These are periodically updated reference rates, not tick-by-tick FX prices.</p></details>'+
+      '<details open><summary>📈 Stock Markets <small>Market data connection required</small></summary><div class="market-leaves"><div class="market-leaf"><span>US equities · NYSE / Nasdaq</span><strong>Not connected</strong></div><div class="market-leaf"><span>Indices · S&amp;P 500 / Nasdaq 100</span><strong>Not connected</strong></div><div class="market-leaf"><span>European equities</span><strong>Not connected</strong></div></div><p class="market-note">Live stock quotes require an authorized market-data API or a backend feed. No simulated prices are shown.</p></details>'+
+      '<details open><summary>🏦 Government Bonds <small>Yield feed required</small></summary><div class="market-leaves"><div class="market-leaf"><span>US Treasury · 2Y / 10Y / 30Y</span><strong>Not connected</strong></div><div class="market-leaf"><span>Euro area · 10Y sovereign yields</span><strong>Not connected</strong></div></div><p class="market-note">Bond yield and price data require a licensed or public delayed feed with provenance and timestamps.</p></details>'+
+      '</div></details></div>'+
+      '<p class="market-note" role="status">'+(st.loading?'Refreshing…':st.error?'FX refresh error: '+this.escape(st.error):st.updated?'Last checked: '+st.updated.toLocaleString():'Connecting…')+'</p>';
+  }
+  paint(){document.querySelectorAll('.window-body,.sheet article').forEach(el=>{const win=el.closest('.window');const id=win?this.shell.registry.state.windows.find(w=>String(w.id)===win.dataset.windowId)?.app:this.shell.registry.state.active;if(id==='markets')el.innerHTML=this.content();});}
+}
