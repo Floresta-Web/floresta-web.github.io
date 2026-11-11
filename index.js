@@ -49,7 +49,7 @@ class FlorestaSystem {
       .wallpaper::after{content:'';position:absolute;inset:0;background:url('./floresta-logo.png') center center / min(58vmin,560px) auto no-repeat;opacity:.25;pointer-events:none}
       .topbar{height:46px;display:flex;align-items:center;gap:14px;padding:0 17px;background:#071811c9;border-bottom:1px solid #ffffff18;backdrop-filter:blur(20px);position:relative;z-index:100}
       .brand{font-weight:750;letter-spacing:.2px}.brand em{font-style:normal;color:var(--accent)}.topbar .spacer{flex:1}.hint{font-size:12px;color:var(--muted)}
-      .brand-button{border:0;background:transparent;color:inherit;font-weight:750;letter-spacing:.2px;padding:9px 12px;border-radius:10px;display:flex;align-items:center;gap:8px}.brand-button:hover,.brand-button[aria-expanded=true]{background:#ffffff16}
+      .brand-button{border:0;background:transparent;color:inherit;font-weight:750;letter-spacing:.2px;padding:9px 12px;border-radius:10px;display:flex;align-items:center;gap:8px}.brand-button:hover,.brand-button[aria-expanded=true]{background:#ffffff16}.brand-button{padding:3px 7px;min-width:44px;min-height:40px;justify-content:center}.brand-button img{width:36px;height:36px;object-fit:contain;display:block;pointer-events:none}
       .floresta-menu{position:absolute;top:48px;left:14px;width:min(320px,calc(100vw - 28px));padding:9px;border:1px solid var(--line);border-radius:16px;background:#10291f;box-shadow:var(--shadow);z-index:200;transform-origin:top left}.floresta-menu[hidden]{display:none}.floresta-menu button{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;text-align:left;background:transparent;border:0;border-radius:10px;color:var(--text)}.floresta-menu button:hover,.floresta-menu button:focus-visible{background:#ffffff18}.floresta-menu .menu-caption{padding:9px 14px;color:var(--muted);font-size:12px}
       .clock{font-size:13px;font-variant-numeric:tabular-nums}.workspace{position:absolute;inset:46px 0 0}.desktop-icons{position:absolute;top:24px;left:22px;display:grid;gap:13px}
       .desktop-icon{width:100px;display:grid;justify-items:center;gap:7px;padding:12px 5px;border:0;border-radius:15px;background:transparent;font-size:12px}
@@ -172,7 +172,7 @@ class FlorestaSystem {
     const root=this.node('main',{id:'root',class:s.mode});
     root.append(this.node('div',{class:'wallpaper'}));
     const top=this.node('header',{class:'topbar'},[
-      this.node('button',{class:'brand-button','data-action':'menu','aria-label':'Floresta Web applications','aria-haspopup':'menu','aria-expanded':String(s.menuOpen),html:'🌲 Floresta Web ▾'}),
+      this.node('button',{class:'brand-button','data-action':'menu','aria-label':'Floresta Web applications','aria-haspopup':'menu','aria-expanded':String(s.menuOpen),'title':'Floresta Web applications'},[this.node('img',{src:'./floresta-logo.png',alt:''})]),
       this.node('span',{class:'station-label',text:'Browser/Reactive Based Web Station'}),
       this.node('span',{class:'spacer'}),
       this.node('div',{class:'runtime-info',id:'runtime-info',role:'status','aria-live':'off',text:'Runtime starting…'})
